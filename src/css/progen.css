@@ -2014,6 +2014,43 @@ tr.inactive td {
 /* =========================================
    セリフTXT管理モーダル
    ========================================= */
+.txt-drop-zone {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    color: #999;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 15px;
+    background: #fafafa;
+}
+
+.txt-drop-zone:hover {
+    border-color: #e67e22;
+    color: #e67e22;
+    background: #fff8f0;
+}
+
+.txt-drop-zone.dragover {
+    border-color: #e67e22;
+    background: #fff3e0;
+    color: #d35400;
+}
+
+.txt-drop-zone .drop-icon {
+    font-size: 1.5em;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.header-group.dragover {
+    background: #fff3e0;
+    border-radius: 6px;
+    outline: 2px dashed #e67e22;
+}
+
 .txt-file-list {
     max-height: 300px;
     overflow-y: auto;

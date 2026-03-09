@@ -715,8 +715,39 @@ function dismissTxtGuide() {
 }
 
 
+// ドロップゾーン: ファイルをドロップでセリフTXT読み込み
+function handleTxtDrop(e, loadFn) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove('dragover');
+    const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.txt'));
+    if (files.length === 0) return;
+    // loadManuscriptTxt / addProofreadingTxt が input.files を期待するので擬似inputを作る
+    const fakeInput = { files: files, value: '' };
+    loadFn(fakeInput);
+}
+
+function handleTxtDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.add('dragover');
+}
+
+function handleTxtDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.classList.remove('dragover');
+}
+
+function setupDropZone(element, loadFn) {
+    element.addEventListener('dragover', handleTxtDragOver);
+    element.addEventListener('dragenter', handleTxtDragOver);
+    element.addEventListener('dragleave', handleTxtDragLeave);
+    element.addEventListener('drop', (e) => handleTxtDrop(e, loadFn));
+}
+
 // ES Module exports
-export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide };
+export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide });
+Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });

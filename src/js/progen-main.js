@@ -20,3 +20,13 @@ import './progen-comicpot.js';
 window.init();
 window.initJsonFolderBrowser();
 window.initCalibrationFolderBrowser();
+
+// ドロップゾーンの初期化
+const txtUploadGroup = document.getElementById('txtUploadGroup');
+if (txtUploadGroup) window.setupDropZone(txtUploadGroup, window.loadManuscriptTxt);
+
+const txtManageDropZone = document.getElementById('txtManageDropZone');
+if (txtManageDropZone) window.setupDropZone(txtManageDropZone, window.addManuscriptTxt);
+
+const proofreadingTxtDropZone = document.getElementById('proofreadingTxtDropZone');
+if (proofreadingTxtDropZone) window.setupDropZone(proofreadingTxtDropZone, window.addProofreadingTxt);
