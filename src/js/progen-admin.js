@@ -548,7 +548,7 @@ function adminRenderListMode() {
     const thingVal = adminOptions.state.numberRuleThingCount || 0;
     const monthVal = adminOptions.state.numberRuleMonth || 0;
     col3.innerHTML = `
-        <div class="category-header" style="background:linear-gradient(135deg, #f39c12, #e67e22);">
+        <div class="category-header" style="background:var(--copper);">
             <span>🔢 数字</span>
             <span class="count">3/3</span>
         </div>
@@ -581,7 +581,7 @@ function adminRenderListGroupedColumn(title, categories) {
         const activeCount = catDef.rules.filter(r => r.active !== false).length;
         const countLabel = catDef.key === 'auxiliary' ? '' : ` <span style="color:#888;">(${activeCount}/${catDef.rules.length})</span>`;
         html += `
-            <div class="sub-category-header" style="background:#f0f0f0; padding:6px 10px; font-size:0.75em; font-weight:bold; color:#555; border-bottom:1px solid #ddd;">
+            <div class="sub-category-header" style="background:var(--surface-dim); padding:6px 10px; font-size:0.75em; font-weight:bold; color:var(--text-secondary); border-bottom:1px solid var(--border);">
                 ${catDef.name}${countLabel}
             </div>
             <table class="category-table excel-style" data-category="${catDef.key}">

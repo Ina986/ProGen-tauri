@@ -115,7 +115,9 @@ async function startNewCreation(mode) {
         return;
     }
 
-    // 抽出モードの場合
+    const isFormatting = (mode === 'formatting');
+
+    // 抽出モード / 整形モードの場合
     // ランディング画面を非表示にしてメイン画面を表示
     hideLandingScreen();
 
@@ -145,14 +147,16 @@ async function startNewCreation(mode) {
         proofJsonIndicator.style.display = 'none';
     }
 
-    // 添付ファイルボタンとGeminiボタンをロック状態にする（レーベル選択後にロック解除）
-    const dataTypeBtn = document.getElementById('dataTypeBtn');
-    if (dataTypeBtn) {
-        dataTypeBtn.setAttribute('disabled', 'disabled');
-    }
+    // 添付ファイルトグルとGeminiボタンをロック状態にする（レーベル選択後にロック解除）
+    if (typeof disableDataTypeToggle === 'function') disableDataTypeToggle();
     const geminiBtn = document.getElementById('extractionGeminiBtn');
     if (geminiBtn) {
         geminiBtn.setAttribute('disabled', 'disabled');
+    }
+
+    // 整形モードの場合はTXTのみに設定
+    if (isFormatting) {
+        selectDataType('txt_only');
     }
 }
 
@@ -334,7 +338,7 @@ function createJsonFolderItem(item, isRootLevel = false) {
                 // フォルダをビューにスクロール
                 itemEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 // ハイライト効果
-                itemEl.style.backgroundColor = '#e3f2fd';
+                itemEl.style.backgroundColor = 'var(--ink-blue-light)';
                 setTimeout(() => {
                     itemEl.style.backgroundColor = '';
                 }, 2000);
@@ -552,6 +556,9 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
         if (jsonFolderBrowserMode === 'proofreading') {
             // 校正プロンプトページへ直接遷移
             goToProofreadingPageFromMain('simple');
+        } else if (jsonFolderBrowserMode === 'formatting') {
+            // 整形モード：添付ファイルをTXTのみに設定
+            selectDataType('txt_only');
         }
 
     } catch (error) {
@@ -983,11 +990,8 @@ function processLoadedJson(data, fileName) {
     // 9. 校正ページのオプションラベルを更新（JSON読み込み状態に応じて）
     updateProofreadingOptionsLabel();
 
-    // 10. 添付ファイルボタンとGeminiボタンのロックを解除（JSONファイル読み込み時）
-    const dataTypeBtn = document.getElementById('dataTypeBtn');
-    if (dataTypeBtn) {
-        dataTypeBtn.removeAttribute('disabled');
-    }
+    // 10. 添付ファイルトグルとGeminiボタンのロックを解除（JSONファイル読み込み時）
+    if (typeof enableDataTypeToggle === 'function') enableDataTypeToggle();
     const geminiBtn = document.getElementById('extractionGeminiBtn');
     if (geminiBtn) {
         geminiBtn.removeAttribute('disabled');

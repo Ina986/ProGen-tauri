@@ -191,9 +191,8 @@ async function startExtraction() {
         textEl.classList.remove('unselected');
     }
 
-    // 添付ファイルボタン・Geminiボタンのロックを解除
-    const dataTypeBtn = document.getElementById('dataTypeBtn');
-    if (dataTypeBtn) dataTypeBtn.removeAttribute('disabled');
+    // 添付ファイルトグル・Geminiボタンのロックを解除
+    if (typeof enableDataTypeToggle === 'function') enableDataTypeToggle();
     const geminiBtn = document.getElementById('extractionGeminiBtn');
     if (geminiBtn) geminiBtn.removeAttribute('disabled');
 
@@ -209,6 +208,44 @@ async function startExtraction() {
 
     // メイン画面へ
     hideLandingScreen();
+}
+
+// 整形プロンプトを開始（抽出と同じだがTXTのみプリセット）
+async function startFormatting() {
+    const select = document.getElementById('landingLabelSelect');
+    const selectedValue = select.value;
+
+    // メイン画面のラベルセレクターを同期
+    document.getElementById('labelSelector').value = selectedValue;
+
+    // レーベル表示テキストを更新
+    const textEl = document.getElementById('labelSelectorText');
+    if (textEl) {
+        textEl.textContent = selectedValue;
+        textEl.classList.remove('unselected');
+    }
+
+    // 添付ファイルトグル・Geminiボタンのロックを解除
+    if (typeof enableDataTypeToggle === 'function') enableDataTypeToggle();
+    const geminiBtn = document.getElementById('extractionGeminiBtn');
+    if (geminiBtn) geminiBtn.removeAttribute('disabled');
+
+    // ルールをロード（外部JSONから）
+    await loadMasterRule(selectedValue);
+
+    // 画面表示を更新（編集モードで初期表示）
+    state.currentViewMode = 'edit';
+    state.currentEditCategory = 'symbol';
+    renderTable();
+    showEditMode();
+    generateXML();
+
+    // メイン画面へ
+    hideLandingScreen();
+
+    // 添付ファイルを「TXTのみ」に設定 & モードスイッチャーを整形に切り替え
+    selectDataType('txt_only');
+    updateModeSwitcherButtons('formattingModeBtn');
 }
 
 // 校正プロンプトを開始
@@ -437,7 +474,7 @@ function renderColumn2(grid) {
         const countLabel = catKey === 'auxiliary' ? '' : ` <span style="color:#888;">(${activeCount}/${totalCount})</span>`;
 
         contentHtml += `
-            <div class="sub-category-header" style="background:#f0f0f0; padding:6px 10px; font-size:0.75em; font-weight:bold; color:#555; border-bottom:1px solid #ddd;">
+            <div class="sub-category-header" style="background:var(--surface-dim); padding:6px 10px; font-size:0.75em; font-weight:bold; color:var(--text-secondary); border-bottom:1px solid var(--border);">
                 ${categoryNames[catKey]}${countLabel}
             </div>
             <table class="category-table excel-style" data-category="${catKey}">
@@ -561,7 +598,7 @@ function renderColumn3(grid) {
 
     // 数字ルールサマリー
     html += `
-        <div class="sub-category-header" style="background:linear-gradient(135deg, #f39c12 0%, #e67e22 100%); padding:6px 10px; font-size:0.75em; font-weight:bold; color:white;">
+        <div class="sub-category-header" style="background:var(--copper); padding:6px 10px; font-size:0.75em; font-weight:bold; color:white;">
             🔢 数字
         </div>
         <div class="number-summary" onclick="state.currentEditCategory='number'; state.currentViewMode='edit'; showEditMode();">
@@ -574,7 +611,7 @@ function renderColumn3(grid) {
     // 難読漢字テーブル（常に表示）
     if (difficultRules.length > 0) {
         html += `
-            <div class="sub-category-header" style="background:linear-gradient(135deg, #9b59b6 0%, #8e44ad 100%); padding:6px 10px; font-size:0.75em; font-weight:bold; color:white;">
+            <div class="sub-category-header" style="background:var(--plum); padding:6px 10px; font-size:0.75em; font-weight:bold; color:white;">
                 🔤 難読漢字（すべてひらく）
             </div>
             <table class="category-table excel-style" data-category="difficult">
@@ -745,8 +782,37 @@ function toggleCategoryAll(category, active) {
 }
 
 
+// ===== モード切替（ヘッダーのモードスイッチャー用） =====
+
+function updateModeSwitcherButtons(activeId) {
+    const ids = ['extractionModeBtn', 'formattingModeBtn', 'proofreadingModeBtn'];
+    ids.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.toggle('active', id === activeId);
+    });
+}
+
+function switchToExtractionMode() {
+    updateModeSwitcherButtons('extractionModeBtn');
+    // 添付ファイル設定をデフォルト（PDFのみ）に切り替え
+    selectDataType('pdf_only');
+}
+
+function switchToFormattingMode() {
+    updateModeSwitcherButtons('formattingModeBtn');
+    selectDataType('txt_only');
+}
+
+function switchToFormattingModeFromProofreading() {
+    // 校正ページから抽出ページに遷移してから整形モードに切り替える
+    goToExtractionFromProofreading();
+    setTimeout(() => {
+        switchToFormattingMode();
+    }, 250);
+}
+
 // ES Module exports
-export { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll };
+export { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, switchToFormattingModeFromProofreading };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll });
+Object.assign(window, { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, switchToFormattingModeFromProofreading });

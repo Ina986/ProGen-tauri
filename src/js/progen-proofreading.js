@@ -604,7 +604,7 @@ function copyProofreadingPrompt() {
         const copyBtn = document.getElementById('proofreadingCopyBtn');
         const originalText = copyBtn.innerHTML;
         copyBtn.innerHTML = '✓ コピーしました';
-        copyBtn.style.background = 'linear-gradient(135deg, #27ae60 0%, #2ecc71 100%)';
+        copyBtn.style.background = 'var(--sage)';
 
         setTimeout(() => {
             copyBtn.innerHTML = originalText;

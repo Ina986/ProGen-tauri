@@ -608,7 +608,7 @@ function cpJumpInSelectMode(pageNum, searchText) {
 let cpNotifyTimer = null;
 function cpShowNotify(message, color) {
     clearTimeout(cpNotifyTimer);
-    cpNotificationInner.style.background = color || '#16a34a';
+    cpNotificationInner.style.background = color || 'var(--sage)';
     cpNotificationInner.textContent = message;
     cpNotificationEl.classList.add('show');
     cpNotifyTimer = setTimeout(() => cpNotificationEl.classList.remove('show'), 1500);
@@ -969,7 +969,7 @@ async function cpHandleFileSave() {
         // 既存パスに上書き保存
         const result = await window.electronAPI.writeTextFile(cpFilePath, cpText);
         if (result.success) {
-            cpShowNotify('保存しました: ' + cpFileName, '#16a34a');
+            cpShowNotify('保存しました: ' + cpFileName, 'var(--sage)');
         } else {
             cpShowNotify('保存に失敗しました', '#ef4444');
         }
@@ -1001,7 +1001,7 @@ async function cpHandleFileSaveAs() {
         const parts = dialogResult.filePath.replace(/\\/g, '/').split('/');
         cpFileName = parts[parts.length - 1];
         cpFileNameDisplay.textContent = cpFileName;
-        cpShowNotify('保存しました: ' + cpFileName, '#16a34a');
+        cpShowNotify('保存しました: ' + cpFileName, 'var(--sage)');
     } else {
         cpShowNotify('保存に失敗しました', '#ef4444');
     }
@@ -1012,7 +1012,7 @@ function cpHandleCopy() {
     if (!cpText || cpText.trim() === '') return;
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(cpText).then(() => {
-            cpShowNotify('コピーしました！', '#16a34a');
+            cpShowNotify('コピーしました！', 'var(--sage)');
         }).catch(() => cpFallbackCopy());
     } else {
         cpFallbackCopy();
@@ -1025,7 +1025,7 @@ function cpFallbackCopy() {
     ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); cpShowNotify('コピーしました！', '#16a34a'); }
+    try { document.execCommand('copy'); cpShowNotify('コピーしました！', 'var(--sage)'); }
     catch (e) { alert('コピーに失敗しました。'); }
     document.body.removeChild(ta);
 }

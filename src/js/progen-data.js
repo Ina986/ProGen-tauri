@@ -351,7 +351,7 @@ function showNonJoyoResultPopup(detectedLines, forceShow = false) {
         html += '</div>';
         html += '<div style="max-height:350px; overflow-y:auto;">';
         html += '<table style="width:100%; border-collapse:collapse; font-size:0.9em;">';
-        html += '<tr style="background:#f5f5f5;">';
+        html += '<tr style="background:var(--surface-dim);">';
         html += '<th style="padding:8px; border:1px solid #ddd; width:40px;"><input type="checkbox" id="nonJoyoSelectAll" checked onchange="toggleAllNonJoyoCheckboxes(this.checked)"></th>';
         html += '<th style="padding:8px; border:1px solid #ddd; width:90px;">該当箇所</th>';
         html += '<th style="padding:8px; border:1px solid #ddd;">該当行</th>';
@@ -573,41 +573,58 @@ function onDataTypeChange() {
 
 // データ種別ドロップダウンの開閉
 function toggleDataTypeDropdown() {
-    const dropdown = document.getElementById('dataTypeDropdown');
-    const group = document.getElementById('dataTypeDropdownGroup');
-    if (dropdown && group) {
-        group.classList.toggle('open');
+    // Legacy — no longer needed with segment toggle
+}
+
+function enableDataTypeToggle() {
+    const toggle = document.getElementById('dataTypeToggle');
+    if (toggle) {
+        toggle.querySelectorAll('.data-type-option').forEach(btn => btn.removeAttribute('disabled'));
+    }
+}
+
+function disableDataTypeToggle() {
+    const toggle = document.getElementById('dataTypeToggle');
+    if (toggle) {
+        toggle.querySelectorAll('.data-type-option').forEach(btn => btn.setAttribute('disabled', 'disabled'));
     }
 }
 
 // データ種別を選択
 function selectDataType(value) {
-    const dropdown = document.getElementById('dataTypeDropdown');
-    const group = document.getElementById('dataTypeDropdownGroup');
-    const btnText = document.getElementById('dataTypeBtnText');
     const hiddenInput = document.getElementById('dataTypeSelector');
-
-    if (!dropdown || !btnText || !hiddenInput) return;
+    if (!hiddenInput) return;
 
     // hidden inputの値を更新
     hiddenInput.value = value;
 
-    // ドロップダウンのアクティブ状態を更新
-    const items = dropdown.querySelectorAll('.dropdown-item');
-    items.forEach(item => {
-        if (item.dataset.value === value) {
-            item.classList.add('active');
-            btnText.textContent = item.textContent;
-        } else {
-            item.classList.remove('active');
-        }
-    });
-
-    // ドロップダウンを閉じる
-    if (group) group.classList.remove('open');
+    // セグメントトグルのアクティブ状態を更新
+    const toggle = document.getElementById('dataTypeToggle');
+    if (toggle) {
+        toggle.querySelectorAll('.data-type-option').forEach(btn => {
+            if (btn.dataset.value === value) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
 
     // データ種別変更処理を呼び出す
     onDataTypeChange();
+
+    // 添付ファイル設定に応じてモードスイッチャーを連動
+    const extractionBtn = document.getElementById('extractionModeBtn');
+    const formattingBtn = document.getElementById('formattingModeBtn');
+    if (extractionBtn && formattingBtn) {
+        if (value === 'txt_only') {
+            extractionBtn.classList.remove('active');
+            formattingBtn.classList.add('active');
+        } else {
+            formattingBtn.classList.remove('active');
+            extractionBtn.classList.add('active');
+        }
+    }
 
     // 抽出プロンプトモード時：Geminiボタンは常に有効
     const geminiBtn = document.getElementById('extractionGeminiBtn');
@@ -616,6 +633,13 @@ function selectDataType(value) {
     } else if (geminiBtn && document.getElementById('labelSelector').value) {
         // レーベルが選択済みなら有効化
         geminiBtn.removeAttribute('disabled');
+    }
+
+    // TXTモード時のみセリフTXT読込ボタンを表示
+    const txtUploadGroup = document.getElementById('txtUploadGroup');
+    if (txtUploadGroup) {
+        const needsTxt = (value === 'pdf_and_txt' || value === 'txt_only');
+        txtUploadGroup.style.display = needsTxt ? 'flex' : 'none';
     }
 }
 
@@ -699,7 +723,14 @@ document.addEventListener('click', function(e) {
 // TXT読み込みガイドの表示
 function showTxtGuide() {
     const guideEl = document.getElementById('txtGuideNotification');
-    if (guideEl) guideEl.style.display = 'block';
+    if (guideEl) guideEl.style.display = 'flex';
+
+    // ドロップゾーンの初期化（初回のみ）
+    const dropZone = document.getElementById('txtGuideDropZone');
+    if (dropZone && !dropZone._dropZoneInitialized) {
+        setupDropZone(dropZone, loadManuscriptTxt);
+        dropZone._dropZoneInitialized = true;
+    }
 }
 
 // TXT読み込みガイドの非表示
@@ -747,7 +778,7 @@ function setupDropZone(element, loadFn) {
 }
 
 // ES Module exports
-export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
+export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });
+Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });

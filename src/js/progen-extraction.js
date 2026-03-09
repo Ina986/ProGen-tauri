@@ -45,11 +45,8 @@ async function selectLabelFromPopup(label) {
         closeLabelSelectModal();
         await changeLabel();
 
-        // 添付ファイルボタンのロックを解除
-        const dataTypeBtn = document.getElementById('dataTypeBtn');
-        if (dataTypeBtn) {
-            dataTypeBtn.removeAttribute('disabled');
-        }
+        // 添付ファイルトグルのロックを解除
+        if (typeof enableDataTypeToggle === 'function') enableDataTypeToggle();
 
         // Geminiボタンのロックを解除
         const geminiBtn = document.getElementById('extractionGeminiBtn');
@@ -72,6 +69,8 @@ async function selectLabelFromPopup(label) {
         document.getElementById('labelSelectModal').style.display = 'none';
         if (mode === 'extraction') {
             await startExtraction();
+        } else if (mode === 'formatting') {
+            await startFormatting();
         } else if (mode === 'proofreading') {
             await startProofreading();
         }
@@ -138,6 +137,21 @@ function renderEditCardMode() {
     const sidebar = document.createElement('aside');
     sidebar.className = 'edit-sidebar';
 
+    // ビュー切り替え（サイドバー上部）
+    const viewToggle = document.createElement('div');
+    viewToggle.className = 'sidebar-view-toggle';
+    viewToggle.innerHTML = `
+        <button class="sidebar-view-btn active" data-view="edit">
+            <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg></span>
+            カード
+        </button>
+        <button class="sidebar-view-btn" data-view="list" onclick="toggleViewMode()">
+            <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>
+            一覧
+        </button>
+    `;
+    sidebar.appendChild(viewToggle);
+
     editCategories.forEach(cat => {
         // ルール数カウント
         let activeCount, totalCount;
@@ -176,6 +190,17 @@ function renderEditCardMode() {
     const bottomControls = document.createElement('div');
     bottomControls.style.marginTop = 'auto';
 
+    // 検索バー（サイドバー下部）
+    const searchDiv = document.createElement('div');
+    searchDiv.className = 'sidebar-search sidebar-search-bottom';
+    searchDiv.innerHTML = `
+        <div class="search-bar sidebar-search-bar">
+            <span class="search-icon"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span></span>
+            <input type="text" id="sidebarSearchBox" placeholder="検索..." value="${escapeHtml(currentSearchText)}" oninput="filterRulesFromSidebar(this.value)">
+        </div>
+    `;
+    bottomControls.appendChild(searchDiv);
+
     // 補助動詞チェックボックス
     const auxRules = state.currentProofRules.filter(r => r.category === 'auxiliary');
     const auxActive = auxRules.some(r => r.active);
@@ -189,37 +214,15 @@ function renderEditCardMode() {
     `;
     bottomControls.appendChild(auxDiv);
 
-    // 一覧表示ボタン
-    const viewToggleDiv = document.createElement('div');
-    viewToggleDiv.style.padding = '10px 12px';
-    viewToggleDiv.style.borderTop = '1px solid #eee';
-    viewToggleDiv.innerHTML = `
-        <button class="btn btn-outline" id="viewToggleBtnSidebar" onclick="toggleViewMode()" style="width:100%; font-size:0.85em;">
-            <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg></span> 一覧表示
-        </button>
-    `;
-    bottomControls.appendChild(viewToggleDiv);
-
-    // 仕様書ボタン
-    const specSheetDiv = document.createElement('div');
-    specSheetDiv.style.padding = '0 12px 10px';
-    specSheetDiv.innerHTML = `
-        <button class="btn btn-outline" onclick="goToSpecSheetPage()" style="width:100%; font-size:0.85em;">
+    // 仕様書リンク
+    const linksDiv = document.createElement('div');
+    linksDiv.className = 'sidebar-text-links';
+    linksDiv.innerHTML = `
+        <a href="#" onclick="goToSpecSheetPage(); return false;">
             <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="12" y2="18"/></svg></span> 仕様書
-        </button>
+        </a>
     `;
-    bottomControls.appendChild(specSheetDiv);
-
-    // 検索バー
-    const searchDiv = document.createElement('div');
-    searchDiv.className = 'sidebar-search';
-    searchDiv.innerHTML = `
-        <div class="search-bar sidebar-search-bar">
-            <span class="search-icon"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span></span>
-            <input type="text" id="sidebarSearchBox" placeholder="検索..." value="${escapeHtml(currentSearchText)}" oninput="filterRulesFromSidebar(this.value)">
-        </div>
-    `;
-    bottomControls.appendChild(searchDiv);
+    bottomControls.appendChild(linksDiv);
 
     sidebar.appendChild(bottomControls);
 
@@ -251,22 +254,26 @@ function filterRulesFromSidebar(value) {
 function updateHeaderSaveButtons() {
     const headerSaveBtn = document.getElementById('headerSaveToJsonBtn');
     const headerSaveAsBtn = document.getElementById('headerSaveAsJsonBtn');
+    const saveGroup = document.getElementById('actionBarSaveGroup');
 
     if (headerSaveBtn) {
         if (typeof state.currentJsonPath !== 'undefined' && state.currentJsonPath) {
-            headerSaveBtn.style.display = 'inline-block';
-            headerSaveBtn.textContent = '表記ルール上書き保存';
+            headerSaveBtn.style.display = 'inline-flex';
+            headerSaveBtn.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> 上書き保存';
         } else {
-            headerSaveBtn.style.display = 'inline-block';
-            headerSaveBtn.textContent = '表記ルール保存';
+            headerSaveBtn.style.display = 'inline-flex';
+            headerSaveBtn.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> 保存';
         }
     }
     if (headerSaveAsBtn) {
         if (typeof state.currentJsonPath !== 'undefined' && state.currentJsonPath) {
-            headerSaveAsBtn.style.display = 'inline-block';
+            headerSaveAsBtn.style.display = 'inline-flex';
         } else {
             headerSaveAsBtn.style.display = 'none';
         }
+    }
+    if (saveGroup) {
+        saveGroup.style.display = 'flex';
     }
 }
 
@@ -308,22 +315,27 @@ function renderEditMainContent(main, cat, filterText) {
     const activeCount = filteredRules.filter(r => r.active).length;
     const totalCount = filteredRules.length;
 
-    // ヘッダー
     const addBtnClick = cat.isSymbol ? 'openSymbolAddModal()' : `openAddModalWithCategory('${cat.key}')`;
+    const catColor = cat.isSymbol ? '#7c5caa' : (categories[cat.key] ? categories[cat.key].color : '#64748b');
     main.innerHTML = `
-        <div class="edit-main-header">
-            <h3>${cat.icon} ${cat.name} <span style="font-weight:normal; font-size:0.85em; color:#888;">(${activeCount}/${totalCount})</span></h3>
-            <div class="edit-main-header-actions">
-                <button class="add-btn" onclick="${addBtnClick}">＋ ルール追加</button>
-            </div>
-        </div>
+        <div class="notation-section-header" style="border-left: 3px solid ${catColor};">${cat.name}</div>
         <div class="edit-main-body"></div>
     `;
 
     const body = main.querySelector('.edit-main-body');
 
     if (filteredRules.length === 0) {
-        body.innerHTML = `<div class="edit-main-empty">${filterText ? '検索結果がありません' : 'ルールがありません'}</div>`;
+        if (filterText) {
+            body.innerHTML = `<div class="edit-main-empty">検索結果がありません</div>`;
+        } else {
+            body.innerHTML = `
+                <div class="edit-main-empty-state">
+                    <div class="empty-state-text">ルールがありません</div>
+                    <div class="edit-rule-card add-card" onclick="${addBtnClick}">
+                        <span class="add-card-icon">＋</span><span class="add-card-text">ルール追加</span>
+                    </div>
+                </div>`;
+        }
         return;
     }
 
@@ -345,6 +357,15 @@ function renderEditMainContent(main, cat, filterText) {
         }
         if (cardEl) body.appendChild(cardEl);
     });
+
+    // 追加カード（点線）
+    if (!filterText) {
+        const addCard = document.createElement('div');
+        addCard.className = 'edit-rule-card add-card';
+        addCard.onclick = () => { eval(addBtnClick); };
+        addCard.innerHTML = '<span class="add-card-icon">＋</span><span class="add-card-text">ルール追加</span>';
+        body.appendChild(addCard);
+    }
 }
 
 // 表記変更カテゴリ専用描画
@@ -362,15 +383,7 @@ function renderNotationMainContent(main, cat, filterText) {
     const activeCount = filteredRules.filter(r => r.active).length;
     const totalCount = filteredRules.length;
 
-    main.innerHTML = `
-        <div class="edit-main-header">
-            <h3>${cat.icon} ${cat.name} <span style="font-weight:normal; font-size:0.85em; color:#888;">(${activeCount}/${totalCount})</span></h3>
-            <div class="edit-main-header-actions">
-                <button class="add-btn" onclick="openAddModalWithCategory('basic')">＋ ルール追加</button>
-            </div>
-        </div>
-        <div class="edit-main-body"></div>
-    `;
+    main.innerHTML = `<div class="edit-main-body"></div>`;
 
     const body = main.querySelector('.edit-main-body');
 
@@ -385,7 +398,7 @@ function renderNotationMainContent(main, cat, filterText) {
 
         sectionDefs.forEach(sec => {
             const sectionRules = filteredRules.filter(r => r.category === sec.key);
-            if (sectionRules.length === 0) return;
+            if (sectionRules.length === 0 && filterText) return;
 
             const section = document.createElement('div');
             section.className = 'notation-section';
@@ -405,6 +418,15 @@ function renderNotationMainContent(main, cat, filterText) {
                 if (cardEl) cardsContainer.appendChild(cardEl);
             });
 
+            // 追加カード（点線）
+            if (!filterText) {
+                const addCard = document.createElement('div');
+                addCard.className = 'edit-rule-card add-card';
+                addCard.onclick = () => { openAddModalWithCategory(sec.key); };
+                addCard.innerHTML = '<span class="add-card-icon">＋</span><span class="add-card-text">ルール追加</span>';
+                cardsContainer.appendChild(addCard);
+            }
+
             section.appendChild(cardsContainer);
             body.appendChild(section);
         });
@@ -413,12 +435,9 @@ function renderNotationMainContent(main, cat, filterText) {
 
 // 数字カテゴリ専用描画
 function renderNumberMainContent(main, cat) {
+    const catColor = categories[cat.key] ? categories[cat.key].color : '#64748b';
     main.innerHTML = `
-        <div class="edit-main-header">
-            <h3>${cat.icon} ${cat.name} <span style="font-weight:normal; font-size:0.85em; color:#888;">(${state.numberSubRulesEnabled ? 4 : 1}/4)</span></h3>
-            <div class="edit-main-header-actions">
-            </div>
-        </div>
+        <div class="notation-section-header" style="border-left: 3px solid ${catColor};">${cat.name}</div>
         <div class="edit-main-body"></div>
     `;
     const body = main.querySelector('.edit-main-body');
@@ -444,7 +463,7 @@ function renderNumberMainContent(main, cat) {
 
     // サブルール一括ON/OFFトグル
     const toggleDiv = document.createElement('div');
-    toggleDiv.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:8px 14px; margin-bottom:8px; background:#f8f9fa; border-radius:6px; border:1px solid #e0e0e0;';
+    toggleDiv.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:8px 14px; margin-bottom:8px; background:var(--surface-dim); border-radius:6px; border:1px solid var(--border-strong);';
     toggleDiv.innerHTML = `
         <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85em; color:#555;">
             <input type="checkbox" ${state.numberSubRulesEnabled ? 'checked' : ''} onchange="toggleNumberSubRules(this.checked)">

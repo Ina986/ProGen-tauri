@@ -298,7 +298,7 @@ async function loadCalibrationFolderContents(dirPath, container, depth) {
             setTimeout(async () => {
                 await toggleFolder();
                 itemEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                itemEl.style.backgroundColor = '#e3f2fd';
+                itemEl.style.backgroundColor = 'var(--ink-blue-light)';
                 setTimeout(() => { itemEl.style.backgroundColor = ''; }, 2000);
             }, 100);
         }
