@@ -12,7 +12,6 @@ use tauri::{Emitter, Manager};
 const JSON_FOLDER_BASE_PATH: &str = r"G:\共有ドライブ\CLLENN\編集部フォルダ\編集企画部\編集企画_C班(AT業務推進)\DTP制作部\JSONフォルダ";
 const MASTER_JSON_BASE_PATH: &str = r"G:\共有ドライブ\CLLENN\編集部フォルダ\編集企画部\編集企画_C班(AT業務推進)\DTP制作部\ProGen_Master_JSON";
 const TXT_FOLDER_BASE_PATH: &str = r"G:\共有ドライブ\CLLENN\編集部フォルダ\編集企画部\写植・校正用テキストログ";
-const UPDATE_FOLDER: &str = r"G:\共有ドライブ\CLLENN\編集部フォルダ\編集企画部\編集企画_C班(AT業務推進)\DTP制作部\App_installer";
 const HANDOFF_MARKER: &str = ".progen_handoff.txt";
 
 // ========================================
@@ -135,44 +134,6 @@ fn find_label_info<'a>(
         .find(|info| info.display_name == label_value)
 }
 
-fn compare_versions(v1: &str, v2: &str) -> std::cmp::Ordering {
-    let p1: Vec<u32> = v1.split('.').filter_map(|s| s.parse().ok()).collect();
-    let p2: Vec<u32> = v2.split('.').filter_map(|s| s.parse().ok()).collect();
-    let max_len = p1.len().max(p2.len());
-    for i in 0..max_len {
-        let n1 = p1.get(i).copied().unwrap_or(0);
-        let n2 = p2.get(i).copied().unwrap_or(0);
-        match n1.cmp(&n2) {
-            std::cmp::Ordering::Equal => continue,
-            other => return other,
-        }
-    }
-    std::cmp::Ordering::Equal
-}
-
-fn extract_version_from_filename(filename: &str) -> Option<String> {
-    let lower = filename.to_lowercase();
-    if !lower.ends_with(".exe") {
-        return None;
-    }
-    let without_exe = &filename[..filename.len() - 4];
-    let mut version_chars: Vec<char> = Vec::new();
-    for c in without_exe.chars().rev() {
-        if c.is_ascii_digit() || c == '.' {
-            version_chars.push(c);
-        } else {
-            break;
-        }
-    }
-    version_chars.reverse();
-    let version: String = version_chars.into_iter().collect();
-    let parts: Vec<&str> = version.split('.').collect();
-    if parts.len() >= 2 && parts.iter().all(|p| !p.is_empty() && p.parse::<u32>().is_ok()) {
-        Some(version)
-    } else {
-        None
-    }
-}
 
 fn check_and_process_handoff() -> Option<HandoffData> {
     let desktop = std::env::var("USERPROFILE").ok()?;
@@ -720,64 +681,72 @@ fn get_comicpot_handoff() -> Option<HandoffData> {
 }
 
 // ========================================
-// 更新チェック
+// 更新チェック (GitHub Releases)
 // ========================================
 
-fn check_for_updates(app: &tauri::AppHandle, current_version: &str) {
-    println!("\u{73FE}\u{5728}\u{306E}\u{30D0}\u{30FC}\u{30B8}\u{30E7}\u{30F3}: {}", current_version);
-    let update_folder = Path::new(UPDATE_FOLDER);
-    if !update_folder.exists() {
-        println!("\u{66F4}\u{65B0}\u{30D5}\u{30A9}\u{30EB}\u{30C0}\u{304C}\u{898B}\u{3064}\u{304B}\u{308A}\u{307E}\u{305B}\u{3093}: {}", UPDATE_FOLDER);
-        return;
-    }
-    let entries = match fs::read_dir(update_folder) {
-        Ok(e) => e,
+async fn check_for_updates(app: tauri::AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let current_version = app
+        .config()
+        .version
+        .clone()
+        .unwrap_or_else(|| "0.0.0".to_string());
+    println!("現在のバージョン: {}", current_version);
+
+    let updater = match app.updater() {
+        Ok(u) => u,
         Err(e) => {
-            eprintln!("\u{66F4}\u{65B0}\u{30D5}\u{30A9}\u{30EB}\u{30C0}\u{306E}\u{8AAD}\u{307F}\u{8FBC}\u{307F}\u{30A8}\u{30E9}\u{30FC}: {}", e);
+            eprintln!("Updater初期化エラー: {}", e);
+            return;
+        }
+    };
+    let update = match updater.check().await {
+        Ok(Some(update)) => update,
+        Ok(None) => {
+            println!("更新はありません（最新バージョンです）");
+            return;
+        }
+        Err(e) => {
+            eprintln!("更新チェックエラー: {}", e);
             return;
         }
     };
 
-    let mut latest_version = current_version.to_string();
-    let mut latest_installer: Option<String> = None;
+    let new_version = update.version.clone();
+    println!("新バージョンが見つかりました: {}", new_version);
 
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        let lower = name.to_lowercase();
-        if lower.starts_with("progen") && lower.ends_with(".exe") {
-            if let Some(version) = extract_version_from_filename(&name) {
-                if compare_versions(&version, &latest_version) == std::cmp::Ordering::Greater {
-                    latest_version = version;
-                    latest_installer = Some(name);
-                }
-            }
-        }
+    use tauri_plugin_dialog::DialogExt;
+    let yes = app
+        .dialog()
+        .message(format!(
+            "現在のバージョン: v{}\n最新バージョン: v{}\n\nアップデートを開始しますか？",
+            current_version, new_version
+        ))
+        .title("アップデートのお知らせ")
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
+            "今すぐ更新".to_string(),
+            "後で".to_string(),
+        ))
+        .blocking_show();
+
+    if !yes {
+        return;
     }
 
-    if let Some(installer) = latest_installer {
-        println!("\u{65B0}\u{30D0}\u{30FC}\u{30B8}\u{30E7}\u{30F3}\u{304C}\u{898B}\u{3064}\u{304B}\u{308A}\u{307E}\u{3057}\u{305F}: {} {}", latest_version, installer);
-        let installer_path = PathBuf::from(UPDATE_FOLDER).join(&installer);
-
-        use tauri_plugin_dialog::DialogExt;
-        let yes = app
-            .dialog()
-            .message(format!(
-                "\u{73FE}\u{5728}\u{306E}\u{30D0}\u{30FC}\u{30B8}\u{30E7}\u{30F3}: v{}\n\u{6700}\u{65B0}\u{30D0}\u{30FC}\u{30B8}\u{30E7}\u{30F3}: v{}\n\n\u{30A2}\u{30C3}\u{30D7}\u{30C7}\u{30FC}\u{30C8}\u{3092}\u{958B}\u{59CB}\u{3057}\u{307E}\u{3059}\u{304B}\u{FF1F}",
-                current_version, latest_version
-            ))
-            .title("\u{30A2}\u{30C3}\u{30D7}\u{30C7}\u{30FC}\u{30C8}\u{306E}\u{304A}\u{77E5}\u{3089}\u{305B}")
-            .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
-                "\u{4ECA}\u{3059}\u{3050}\u{66F4}\u{65B0}".to_string(),
-                "\u{5F8C}\u{3067}".to_string(),
-            ))
-            .blocking_show();
-
-        if yes {
-            let _ = Command::new(&installer_path).spawn();
-            std::process::exit(0);
+    // ダウンロード＆インストール
+    match update.download_and_install(|_, _| {}, || {}).await {
+        Ok(()) => {
+            println!("更新のインストールが完了しました。再起動します。");
+            app.restart();
         }
-    } else {
-        println!("\u{66F4}\u{65B0}\u{306F}\u{3042}\u{308A}\u{307E}\u{305B}\u{3093}\u{FF08}\u{6700}\u{65B0}\u{30D0}\u{30FC}\u{30B8}\u{30E7}\u{30F3}\u{3067}\u{3059}\u{FF09}");
+        Err(e) => {
+            eprintln!("更新のインストールに失敗しました: {}", e);
+            app.dialog()
+                .message(format!("更新のインストールに失敗しました:\n{}", e))
+                .title("エラー")
+                .blocking_show();
+        }
     }
 }
 
@@ -792,6 +761,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
@@ -825,12 +795,9 @@ pub fn run() {
         ])
         .setup(|app| {
             let handle = app.handle().clone();
-            let version = app
-                .config()
-                .version
-                .clone()
-                .unwrap_or_else(|| "0.0.0".to_string());
-            check_for_updates(&handle, &version);
+            tauri::async_runtime::spawn(async move {
+                check_for_updates(handle).await;
+            });
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -844,70 +811,6 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // --- compare_versions ---
-
-    #[test]
-    fn compare_versions_equal() {
-        assert_eq!(compare_versions("1.2.1", "1.2.1"), std::cmp::Ordering::Equal);
-    }
-
-    #[test]
-    fn compare_versions_greater() {
-        assert_eq!(compare_versions("1.3.0", "1.2.1"), std::cmp::Ordering::Greater);
-    }
-
-    #[test]
-    fn compare_versions_less() {
-        assert_eq!(compare_versions("1.2.0", "1.2.1"), std::cmp::Ordering::Less);
-    }
-
-    #[test]
-    fn compare_versions_different_length() {
-        assert_eq!(compare_versions("1.2", "1.2.0"), std::cmp::Ordering::Equal);
-        assert_eq!(compare_versions("1.2", "1.2.1"), std::cmp::Ordering::Less);
-    }
-
-    #[test]
-    fn compare_versions_major() {
-        assert_eq!(compare_versions("2.0.0", "1.9.9"), std::cmp::Ordering::Greater);
-    }
-
-    // --- extract_version_from_filename ---
-
-    #[test]
-    fn extract_version_standard() {
-        assert_eq!(
-            extract_version_from_filename("ProGen_1.2.1_x64-setup.exe"),
-            None // "setup" is not a version
-        );
-    }
-
-    #[test]
-    fn extract_version_trailing() {
-        assert_eq!(
-            extract_version_from_filename("ProGen1.2.1.exe"),
-            Some("1.2.1".to_string())
-        );
-    }
-
-    #[test]
-    fn extract_version_two_parts() {
-        assert_eq!(
-            extract_version_from_filename("App2.0.exe"),
-            Some("2.0".to_string())
-        );
-    }
-
-    #[test]
-    fn extract_version_no_version() {
-        assert_eq!(extract_version_from_filename("readme.txt"), None);
-    }
-
-    #[test]
-    fn extract_version_not_exe() {
-        assert_eq!(extract_version_from_filename("app1.2.3.msi"), None);
-    }
 
     // --- generate_label_key ---
 
