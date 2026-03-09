@@ -1295,8 +1295,80 @@
     </div>
 </div>
 
+<!-- アップデートダイアログ -->
+<div id="updateOverlay" class="update-overlay" style="display:none;">
+    <div class="update-dialog">
+        <div class="update-header">
+            <span class="update-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="28" height="28"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </span>
+            <h3>アップデートのお知らせ</h3>
+        </div>
+        <div class="update-body">
+            <div class="update-version-row">
+                <div class="update-version-box current">
+                    <span class="update-version-label">現在</span>
+                    <span class="update-version-value" id="updateCurrentVersion">v1.0.0</span>
+                </div>
+                <span class="update-arrow">→</span>
+                <div class="update-version-box new">
+                    <span class="update-version-label">最新</span>
+                    <span class="update-version-value" id="updateNewVersion">v1.1.0</span>
+                </div>
+            </div>
+            <p class="update-message" id="updateMessage">新しいバージョンが利用可能です。</p>
+        </div>
+        <div class="update-footer">
+            <button class="btn update-btn-later" id="updateLaterBtn" onclick="respondToUpdate(false)">後で</button>
+            <button class="btn update-btn-accept" id="updateAcceptBtn" onclick="respondToUpdate(true)">今すぐ更新</button>
+        </div>
+    </div>
+</div>
+
 <script src="js/tauri-bridge.js"></script>
 <script type="module" src="js/progen-main.js"></script>
+
+<script>
+// アップデートUI制御
+(function() {
+    const { listen, emit } = window.__TAURI__.event;
+
+    listen('update-available', function(event) {
+        var data = event.payload;
+        document.getElementById('updateCurrentVersion').textContent = 'v' + data.currentVersion;
+        document.getElementById('updateNewVersion').textContent = 'v' + data.newVersion;
+        document.getElementById('updateMessage').textContent = '新しいバージョンが利用可能です。';
+        document.getElementById('updateAcceptBtn').textContent = '今すぐ更新';
+        document.getElementById('updateAcceptBtn').disabled = false;
+        document.getElementById('updateLaterBtn').style.display = '';
+        document.getElementById('updateOverlay').style.display = 'flex';
+    });
+
+    listen('update-downloading', function() {
+        document.getElementById('updateMessage').textContent = 'ダウンロード中...しばらくお待ちください。';
+        document.getElementById('updateAcceptBtn').textContent = 'ダウンロード中...';
+        document.getElementById('updateAcceptBtn').disabled = true;
+        document.getElementById('updateLaterBtn').style.display = 'none';
+    });
+
+    listen('update-error', function(event) {
+        document.getElementById('updateMessage').textContent = '更新に失敗しました: ' + event.payload;
+        document.getElementById('updateAcceptBtn').textContent = '閉じる';
+        document.getElementById('updateAcceptBtn').disabled = false;
+        document.getElementById('updateAcceptBtn').onclick = function() {
+            document.getElementById('updateOverlay').style.display = 'none';
+        };
+        document.getElementById('updateLaterBtn').style.display = 'none';
+    });
+
+    window.respondToUpdate = function(accepted) {
+        window.__TAURI__.core.invoke('respond_to_update', { accepted: accepted });
+        if (!accepted) {
+            document.getElementById('updateOverlay').style.display = 'none';
+        }
+    };
+})();
+</script>
 
 </body>
 </html>

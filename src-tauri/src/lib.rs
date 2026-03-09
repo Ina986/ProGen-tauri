@@ -65,6 +65,11 @@ struct AppState {
     master_rule_file_map: Mutex<HashMap<String, LabelInfo>>,
 }
 
+// アップデート応答状態
+struct UpdateState {
+    response: Mutex<Option<bool>>,
+}
+
 // ========================================
 // ヘルパー関数
 // ========================================
@@ -676,6 +681,12 @@ fn launch_comic_bridge(json_file_path: String) -> serde_json::Value {
 }
 
 #[tauri::command]
+fn respond_to_update(accepted: bool, state: tauri::State<'_, UpdateState>) {
+    let mut response = state.response.lock().unwrap();
+    *response = Some(accepted);
+}
+
+#[tauri::command]
 fn get_comicpot_handoff() -> Option<HandoffData> {
     check_and_process_handoff()
 }
@@ -716,25 +727,41 @@ async fn check_for_updates(app: tauri::AppHandle) {
     let new_version = update.version.clone();
     println!("新バージョンが見つかりました: {}", new_version);
 
-    use tauri_plugin_dialog::DialogExt;
-    let yes = app
-        .dialog()
-        .message(format!(
-            "現在のバージョン: v{}\n最新バージョン: v{}\n\nアップデートを開始しますか？",
-            current_version, new_version
-        ))
-        .title("アップデートのお知らせ")
-        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom(
-            "今すぐ更新".to_string(),
-            "後で".to_string(),
-        ))
-        .blocking_show();
+    // フロントエンドに更新情報を送信
+    let _ = app.emit("update-available", serde_json::json!({
+        "currentVersion": current_version,
+        "newVersion": new_version,
+    }));
 
-    if !yes {
+    // フロントエンドからの応答を待つ (グローバル状態経由)
+    {
+        let state = app.state::<UpdateState>();
+        let mut response = state.response.lock().unwrap();
+        *response = None;
+    }
+
+    // 最大60秒ポーリング
+    let accepted = {
+        let state = app.state::<UpdateState>();
+        let mut accepted = false;
+        for _ in 0..600 {
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            let response = state.response.lock().unwrap();
+            if let Some(val) = *response {
+                accepted = val;
+                break;
+            }
+        }
+        accepted
+    };
+
+    if !accepted {
         return;
     }
 
-    // ダウンロード＆インストール
+    // ダウンロード開始を通知
+    let _ = app.emit("update-downloading", serde_json::json!({}));
+
     match update.download_and_install(|_, _| {}, || {}).await {
         Ok(()) => {
             println!("更新のインストールが完了しました。再起動します。");
@@ -742,10 +769,7 @@ async fn check_for_updates(app: tauri::AppHandle) {
         }
         Err(e) => {
             eprintln!("更新のインストールに失敗しました: {}", e);
-            app.dialog()
-                .message(format!("更新のインストールに失敗しました:\n{}", e))
-                .title("エラー")
-                .blocking_show();
+            let _ = app.emit("update-error", e.to_string());
         }
     }
 }
@@ -773,6 +797,9 @@ pub fn run() {
         .manage(AppState {
             master_rule_file_map: Mutex::new(initial_map),
         })
+        .manage(UpdateState {
+            response: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![
             get_json_folder_path,
             list_directory,
@@ -792,6 +819,7 @@ pub fn run() {
             save_calibration_data,
             launch_comic_bridge,
             get_comicpot_handoff,
+            respond_to_update,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
