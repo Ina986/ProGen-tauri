@@ -1,22 +1,23 @@
-; Force refresh Windows icon cache after install/update
+; Force refresh Windows icon after install/update
 
-!macro NSIS_HOOK_POSTINSTALL
-  ; Delete the app's old .ico from install dir to force replacement
-  IfFileExists "$INSTDIR\icon.ico" 0 +2
-    Delete "$INSTDIR\icon.ico"
+!macro NSIS_HOOK_PREINSTALL
+  ; Delete existing shortcuts so they get recreated with the new icon
+  Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+  Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+  Delete "$SMPROGRAMS\$AppStartMenuFolder\${PRODUCTNAME}.lnk"
 
-  ; Delete legacy icon cache (Windows 7/8)
+  ; Delete icon cache so Windows re-reads icons from the new exe
   IfFileExists "$LOCALAPPDATA\IconCache.db" 0 +2
     Delete "$LOCALAPPDATA\IconCache.db"
 
-  ; Delete Windows 10/11 icon cache files
   IfFileExists "$LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db" 0 +2
     Delete "$LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db"
+!macroend
 
-  ; Notify Windows that file associations and icons have changed
-  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x0000, p 0, p 0)'
+!macro NSIS_HOOK_POSTINSTALL
+  ; Notify Windows that icons have changed
+  System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, i 0, i 0)'
 
-  ; Rebuild icon cache
-  nsExec::ExecToLog 'ie4uinit.exe -ClearIconCache'
-  nsExec::ExecToLog 'ie4uinit.exe -show'
+  ; Notify about the specific exe icon change
+  System::Call 'shell32::SHChangeNotify(i 0x00002000, i 0x0005, t "$INSTDIR\${MAINBINARYNAME}.exe", i 0)'
 !macroend
