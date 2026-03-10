@@ -362,7 +362,11 @@ function renderEditMainContent(main, cat, filterText) {
     if (!filterText) {
         const addCard = document.createElement('div');
         addCard.className = 'edit-rule-card add-card';
-        addCard.onclick = () => { eval(addBtnClick); };
+        if (cat.isSymbol) {
+            addCard.onclick = () => { openSymbolAddModal(); };
+        } else {
+            addCard.onclick = () => { openAddModalWithCategory(cat.key); };
+        }
         addCard.innerHTML = '<span class="add-card-icon">＋</span><span class="add-card-text">ルール追加</span>';
         body.appendChild(addCard);
     }
