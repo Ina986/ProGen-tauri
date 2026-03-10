@@ -15,6 +15,12 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  ; Recreate desktop shortcut (needed for silent update mode)
+  CreateShortCut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+
+  ; Recreate Start Menu shortcut
+  CreateShortCut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+
   ; Notify Windows that icons have changed
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0x1000, i 0, i 0)'
 

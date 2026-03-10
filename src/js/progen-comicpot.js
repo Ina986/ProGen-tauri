@@ -536,10 +536,12 @@ function cpJumpInTextarea(pageNum, searchText) {
     const targetPos = matchStart >= 0 ? matchStart : pageStartChar;
     const targetEnd = matchStart >= 0 ? matchStart + matchLen : pageStartChar;
 
-    // focus → setSelectionRange → scroll の順で実行（focus()の自動スクロールがscrollTopを上書きするのを防止）
+    // focus → 次フレームで setSelectionRange + scroll（focus()の自動スクロールが完了してから手動スクロールを適用）
     cpEditTextArea.focus();
-    cpEditTextArea.setSelectionRange(targetPos, targetEnd);
-    scrollTextareaToPosition(cpEditTextArea, targetPos);
+    requestAnimationFrame(() => {
+        cpEditTextArea.setSelectionRange(targetPos, targetEnd);
+        scrollTextareaToPosition(cpEditTextArea, targetPos);
+    });
 
     // 3秒後に選択解除
     clearTimeout(cpJumpHighlightTimer);
