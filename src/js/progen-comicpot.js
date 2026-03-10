@@ -536,10 +536,10 @@ function cpJumpInTextarea(pageNum, searchText) {
     const targetPos = matchStart >= 0 ? matchStart : pageStartChar;
     const targetEnd = matchStart >= 0 ? matchStart + matchLen : pageStartChar;
 
-    // ミラーdivでスクロール位置を正確に計算
-    scrollTextareaToPosition(cpEditTextArea, targetPos);
+    // focus → setSelectionRange → scroll の順で実行（focus()の自動スクロールがscrollTopを上書きするのを防止）
     cpEditTextArea.focus();
     cpEditTextArea.setSelectionRange(targetPos, targetEnd);
+    scrollTextareaToPosition(cpEditTextArea, targetPos);
 
     // 3秒後に選択解除
     clearTimeout(cpJumpHighlightTimer);
@@ -591,7 +591,7 @@ function cpJumpInSelectMode(pageNum, searchText) {
     const el = cpSelectModeEl.querySelector(`[data-index="${targetChunkIndex}"]`);
     if (!el) return;
 
-    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.scrollIntoView({ behavior: 'instant', block: 'center' });
 
     // 前回のハイライトをクリア
     clearTimeout(cpJumpHighlightTimer);
