@@ -4172,12 +4172,28 @@ tr.inactive td {
     line-height: 1; margin-top: -5px;
 }
 .cp-json-browser-search-clear:hover { color: var(--text); }
-.cp-json-browser-breadcrumb {
-    display: flex; align-items: center; gap: 1px;
-    padding: 5px 20px; font-size: 11px;
+.cp-json-browser-nav-row {
+    display: flex; align-items: center;
     border-top: 1px solid var(--border);
     border-bottom: 1px solid var(--border);
     background: var(--surface-dim);
+}
+.cp-json-browser-back-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 100%; min-height: 26px;
+    border: none; background: none; cursor: pointer;
+    color: var(--text-secondary); padding: 0;
+    flex-shrink: 0;
+    transition: color 0.15s, background 0.15s;
+}
+.cp-json-browser-back-btn:hover:not(:disabled) {
+    color: var(--copper); background: rgba(179,136,100,0.08);
+}
+.cp-json-browser-back-btn:disabled { cursor: not-allowed; }
+.cp-json-browser-breadcrumb {
+    display: flex; align-items: center; gap: 1px;
+    padding: 5px 8px 5px 4px; font-size: 11px;
+    flex: 1; min-width: 0;
     flex-wrap: wrap; min-height: 26px;
     overflow-x: auto;
 }

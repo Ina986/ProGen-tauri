@@ -540,7 +540,8 @@ function cpApplyPanelCategoryFilter() {
 const CP_JSON_BASE_PATH = 'G:\\共有ドライブ\\CLLENN\\編集部フォルダ\\編集企画部\\写植・校正用テキストログ';
 let cpJsonBrowserBasePath = '';
 let cpJsonBrowserCurrentPath = '';
-let cpJsonBrowserAllFiles = []; // 検索用キャッシュ
+let cpJsonBrowserAllFiles = []; // 検索用キャッシュ（JSONファイル）
+let cpJsonBrowserAllFolders = []; // 検索用キャッシュ（フォルダ）
 let cpJsonBrowserSearchTimeout = null;
 
 async function cpOpenJsonBrowser() {
@@ -565,8 +566,9 @@ async function cpOpenJsonBrowser() {
     }
     await cpJsonBrowserLoadFolder(cpJsonBrowserBasePath);
 
-    // バックグラウンドで全JSONファイルをキャッシュ（検索用）
+    // バックグラウンドで全フォルダ＆JSONファイルをキャッシュ（検索用）
     cpJsonBrowserAllFiles = [];
+    cpJsonBrowserAllFolders = [];
     _cpCacheJsonFilesRecursive(cpJsonBrowserBasePath);
 }
 
@@ -650,6 +652,14 @@ function _cpUpdateBreadcrumb() {
     const normalizedBase = cpJsonBrowserBasePath.replace(/\\/g, '/');
     const normalizedCurrent = cpJsonBrowserCurrentPath.replace(/\\/g, '/');
 
+    // 戻るボタンの有効/無効を更新
+    const backBtn = document.getElementById('cpJsonBrowserBackBtn');
+    if (backBtn) {
+        const isAtRoot = normalizedCurrent === normalizedBase;
+        backBtn.disabled = isAtRoot;
+        backBtn.style.opacity = isAtRoot ? '0.3' : '1';
+    }
+
     breadcrumbEl.innerHTML = '';
 
     // TOP
@@ -693,6 +703,13 @@ async function _cpCacheJsonFilesRecursive(dirPath) {
 
         for (const item of result.items) {
             if (item.isDirectory) {
+                // フォルダもキャッシュに追加
+                const relativePath = item.path.replace(cpJsonBrowserBasePath, '').replace(/^[\\\/]/, '');
+                cpJsonBrowserAllFolders.push({
+                    name: item.name,
+                    path: item.path,
+                    relativePath: relativePath
+                });
                 await _cpCacheJsonFilesRecursive(item.path);
             } else if (item.isFile && item.name.toLowerCase().endsWith('.json')) {
                 const relativePath = item.path.replace(cpJsonBrowserBasePath, '').replace(/^[\\\/]/, '');
@@ -729,21 +746,21 @@ function cpJsonBrowserFilter() {
 
 function _cpPerformSearch(query) {
     const normalizedQuery = query.toLowerCase();
-    const results = cpJsonBrowserAllFiles.filter(file =>
-        file.name.toLowerCase().includes(normalizedQuery) ||
-        file.relativePath.toLowerCase().includes(normalizedQuery)
+    // フォルダ名で検索（子階層すべてを含む）
+    const folderResults = cpJsonBrowserAllFolders.filter(folder =>
+        folder.name.toLowerCase().includes(normalizedQuery)
     );
-    _cpDisplaySearchResults(results, query);
+    _cpDisplaySearchResults(folderResults, query);
 }
 
 function _cpDisplaySearchResults(results, query) {
     const searchResultsEl = document.getElementById('cpJsonBrowserSearchResults');
     const listEl = document.getElementById('cpJsonBrowserList');
-    const breadcrumbEl = document.getElementById('cpJsonBrowserBreadcrumb');
+    const navRow = document.querySelector('.cp-json-browser-nav-row');
     if (!searchResultsEl) return;
 
     listEl.style.display = 'none';
-    breadcrumbEl.style.display = 'none';
+    if (navRow) navRow.style.display = 'none';
     searchResultsEl.style.display = 'block';
     searchResultsEl.innerHTML = '';
 
@@ -754,29 +771,35 @@ function _cpDisplaySearchResults(results, query) {
 
     const countEl = document.createElement('div');
     countEl.className = 'cp-json-browser-search-count';
-    countEl.textContent = results.length + '件のJSONファイルが見つかりました';
+    countEl.textContent = results.length + '件見つかりました';
     searchResultsEl.appendChild(countEl);
 
-    results.forEach(file => {
+    results.forEach(folder => {
         const div = document.createElement('div');
-        div.className = 'cp-json-browser-item cp-json-browser-file cp-json-browser-search-result';
+        div.className = 'cp-json-browser-item cp-json-browser-folder cp-json-browser-search-result';
 
         const icon = document.createElement('span');
         icon.className = 'cp-json-browser-icon';
-        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
         div.appendChild(icon);
 
         const nameEl = document.createElement('span');
         nameEl.className = 'cp-json-browser-name';
-        nameEl.innerHTML = _cpHighlightMatch(file.name, query);
+        nameEl.innerHTML = _cpHighlightMatch(folder.name, query);
         div.appendChild(nameEl);
 
         const pathEl = document.createElement('div');
         pathEl.className = 'cp-json-browser-search-path';
-        pathEl.innerHTML = _cpHighlightMatch(file.relativePath, query);
+        pathEl.innerHTML = _cpHighlightMatch(folder.relativePath, query);
         div.appendChild(pathEl);
 
-        div.addEventListener('click', () => cpJsonBrowserOpenFile(file.path));
+        div.addEventListener('click', () => {
+            // 検索をクリアしてフォルダに移動
+            const searchInput = document.getElementById('cpJsonBrowserSearchInput');
+            if (searchInput) searchInput.value = '';
+            cpJsonBrowserClearSearch();
+            cpJsonBrowserLoadFolder(folder.path);
+        });
         searchResultsEl.appendChild(div);
     });
 }
@@ -795,12 +818,12 @@ function _cpHighlightMatch(text, query) {
 function cpJsonBrowserClearSearch() {
     const searchResultsEl = document.getElementById('cpJsonBrowserSearchResults');
     const listEl = document.getElementById('cpJsonBrowserList');
-    const breadcrumbEl = document.getElementById('cpJsonBrowserBreadcrumb');
+    const navRow = document.querySelector('.cp-json-browser-nav-row');
     const clearBtn = document.getElementById('cpJsonBrowserSearchClear');
 
     if (searchResultsEl) { searchResultsEl.style.display = 'none'; searchResultsEl.innerHTML = ''; }
     if (listEl) listEl.style.display = '';
-    if (breadcrumbEl) breadcrumbEl.style.display = '';
+    if (navRow) navRow.style.display = '';
     if (clearBtn) clearBtn.style.display = 'none';
 }
 

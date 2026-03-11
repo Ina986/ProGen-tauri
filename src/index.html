@@ -1034,7 +1034,7 @@
         <div class="modal-body">
             <!-- 検索バー -->
             <div class="json-folder-search">
-                <input type="text" id="calibrationFolderSearchInput" placeholder="フォルダ名で検索...">
+                <input type="text" id="calibrationFolderSearchInput" placeholder="作品名で検索...">
                 <button class="json-folder-search-clear" id="calibrationFolderSearchClearBtn" style="display:none;">✕</button>
             </div>
             <div class="json-folder-path-display">
@@ -1225,10 +1225,15 @@
         <div class="cp-modal cp-json-browser-modal" onmousedown="event.stopPropagation()">
             <div class="cp-json-browser-header">校正チェックJSONを選択してください</div>
             <div class="cp-json-browser-search">
-                <input type="text" id="cpJsonBrowserSearchInput" placeholder="JSONファイルを検索..." autocomplete="off">
+                <input type="text" id="cpJsonBrowserSearchInput" placeholder="作品名で検索..." autocomplete="off" oninput="cpJsonBrowserFilter()">
                 <button class="cp-json-browser-search-clear" id="cpJsonBrowserSearchClear" onclick="cpJsonBrowserClearSearch()" style="display:none;">&times;</button>
             </div>
-            <div class="cp-json-browser-breadcrumb" id="cpJsonBrowserBreadcrumb"></div>
+            <div class="cp-json-browser-nav-row">
+                <button class="cp-json-browser-back-btn" id="cpJsonBrowserBackBtn" onclick="cpJsonBrowserGoUp()" title="前のフォルダに戻る">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <div class="cp-json-browser-breadcrumb" id="cpJsonBrowserBreadcrumb"></div>
+            </div>
             <div id="cpJsonBrowserSearchResults" class="cp-json-browser-search-results" style="display:none;"></div>
             <div class="cp-json-browser-list" id="cpJsonBrowserList">
                 <div class="cp-json-browser-empty">読み込み中...</div>
