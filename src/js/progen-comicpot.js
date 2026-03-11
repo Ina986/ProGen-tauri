@@ -199,9 +199,50 @@ function cpCloseSerifSelectModal() {
 /**
  * COMIC-POTハンドオフ: 外部プラグインから渡されたテキストをエディタに読み込み
  */
-function cpLoadFromHandoff(data) {
+async function cpLoadFromHandoff(data) {
     let content = data.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     if (content.charCodeAt(0) === 0xFEFF) content = content.substring(1); // BOM除去
+
+    const fileInfo = {
+        name: data.fileName,
+        content: content,
+        size: content.length
+    };
+
+    // 両方のファイルリストに追加（セリフテキスト読み込みと同等の扱い）
+    state.manuscriptTxtFiles = state.manuscriptTxtFiles.concat([fileInfo]);
+    state.proofreadingFiles = state.proofreadingFiles.concat([fileInfo]);
+
+    // 抽出プロンプト側のUI更新
+    updateNonJoyoDetection();
+    renderTxtFileList();
+    updateOutput();
+    const totalSize = state.manuscriptTxtFiles.reduce((sum, f) => sum + f.size, 0);
+    const statusEl = document.getElementById('txtUploadStatus');
+    if (statusEl) statusEl.textContent = state.manuscriptTxtFiles.length + 'ファイル (' + formatFileSize(totalSize) + ')';
+    const manageBtn = document.getElementById('txtManageBtn');
+    if (manageBtn) manageBtn.style.display = 'inline-block';
+    const geminiBtn = document.getElementById('extractionGeminiBtn');
+    if (geminiBtn) geminiBtn.removeAttribute('disabled');
+
+    // 校正プロンプト側のUI更新
+    state.proofreadingContent = state.proofreadingFiles.map(f => f.content).join('\n\n--- 次のファイル ---\n\n');
+    renderProofreadingFileList();
+    const detectedLines = detectNonJoyoLinesWithPageInfo(state.proofreadingFiles);
+    state.proofreadingDetectedNonJoyoWords = detectedLines;
+    updateProofreadingPrompt();
+
+    // 校正データ保存用のパス情報を抽出（ベースパス未取得なら先に取得）
+    if (data.filePath) {
+        if (!state.txtFolderBasePath && window.electronAPI && window.electronAPI.getTxtFolderPath) {
+            try { state.txtFolderBasePath = await window.electronAPI.getTxtFolderPath(); } catch (e) { /* ignore */ }
+        }
+        if (state.txtFolderBasePath) {
+            extractCalibrationInfoFromPath(data.filePath, [fileInfo]);
+        }
+    }
+
+    // COMIC-POTエディタに読み込み＆遷移（従来動作）
     cpText = content;
     cpFilePath = data.filePath;
     cpFileName = data.fileName;
