@@ -337,17 +337,18 @@ ${escapedText}
 
 // 出力形式XMLを生成（COMIC-POT形式）
 function getOutputFormatXml() {
-    const vol = state.outputFormatVolume;
+    const vol = String(state.outputFormatVolume).padStart(2, '0');
     const startP = state.outputFormatStartPage;
     const p2 = startP + 1;
     return `<output_format>
             <instruction>テキストは、ヘッダー部分に「Plaintext」と表示されるコードブロックに書き込む</instruction>
             <instruction>出力の先頭行に [COMIC-POT:${state.outputFormatSortMode}] ヘッダーを記述する</instruction>
-            <instruction>各ページの先頭に [${vol}巻${startP}P]、[${vol}巻${p2}P]… のように [巻数巻ページ番号P] 形式のページヘッダーを付与する（巻数=${vol}、開始ページ=${startP}）</instruction>
-            <instruction>ページ間に「----------」は使用せず、[巻P] ヘッダーをページ区切りとする</instruction>
+            <instruction>ヘッダーの次の行に [${vol}巻] のように巻番号マーカーを記述する（巻数=${state.outputFormatVolume}、2桁ゼロ埋め）</instruction>
+            <instruction>各ページの先頭に &lt;&lt;${startP}Page&gt;&gt;、&lt;&lt;${p2}Page&gt;&gt;… のように &lt;&lt;ページ番号Page&gt;&gt; 形式のページマーカーを付与する（開始ページ=${startP}）</instruction>
+            <instruction>ページ間に「----------」は使用せず、&lt;&lt;XPage&gt;&gt; マーカーをページ区切りとする</instruction>
             <instruction critical="true">【必須】吹き出し（フキダシ）ごとに1行の空白行を入れて区切る。これは絶対に守ること。</instruction>
             <instruction>出力するテキストには、ダブルクォーテーションや行番号など、余分な情報を追記しない</instruction>
-            <instruction>ページに抽出対象となるテキストが一切存在しない場合は、次のページヘッダーが直後に続くようにする</instruction>
+            <instruction>ページに抽出対象となるテキストが一切存在しない場合は、次のページマーカーが直後に続くようにする</instruction>
         </output_format>
         <citation_marker_removal>
             <instruction>出力テキストから以下のシステムタグを完全に削除すること：</instruction>
@@ -358,8 +359,8 @@ function getOutputFormatXml() {
         <example description="COMIC-POT形式の正しい出力例">
             <![CDATA[
 [COMIC-POT:${state.outputFormatSortMode}]
-
-[${vol}巻${startP}P]
+[${vol}巻]
+<<${startP}Page>>
 気分は
 どうですか
 姐さん？
@@ -371,7 +372,7 @@ function getOutputFormatXml() {
 
 なによ その目…
 
-[${vol}巻${p2}P]
+<<${p2}Page>>
 こんなのっ
 あの人が知ったら
 タダじゃ

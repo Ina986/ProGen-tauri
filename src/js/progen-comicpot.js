@@ -470,18 +470,23 @@ function cpJumpInTextarea(pageNum, searchText) {
     let charPos = 0;
 
     // ページ区切りをカウントして対象ページの文字範囲を特定
-    // [X巻YP] → ページYに設定, <<XPage>> → ページXに設定, ---------- → +1
+    // [XX巻] → スキップ（巻マーカー）, <<XPage>> → ページXに設定, ---------- → +1
     for (let i = 0; i < lines.length; i++) {
         const trimmedLine = lines[i].trim();
-        const pageHeaderMatch = trimmedLine.match(/^\[(\d+)巻(\d+)P\]$/);
+        const isVolumeMarker = /^\[\d+巻\]$/.test(trimmedLine);
         const exportPageMatch = trimmedLine.match(/^<<(\d+)Page>>$/);
         const isDash = /^-{10}$/.test(trimmedLine);
 
-        if (pageHeaderMatch || exportPageMatch || isDash) {
+        if (isVolumeMarker) {
+            // 巻マーカーはスキップ（ページ番号に影響しない）
+            pageStartChar = charPos + lines[i].length + 1;
+            charPos += lines[i].length + 1;
+            continue;
+        }
+
+        if (exportPageMatch || isDash) {
             let nextPage;
-            if (pageHeaderMatch) {
-                nextPage = parseInt(pageHeaderMatch[2], 10);
-            } else if (exportPageMatch) {
+            if (exportPageMatch) {
                 nextPage = parseInt(exportPageMatch[1], 10);
             } else {
                 nextPage = currentPage + 1;
@@ -553,18 +558,18 @@ function cpJumpInTextarea(pageNum, searchText) {
 
 function cpJumpInSelectMode(pageNum, searchText) {
     // チャンクからページを特定
-    // [X巻YP] → ページYに設定, <<XPage>> → ページXに設定, ---------- → +1
+    // [XX巻] → スキップ（巻マーカー）, <<XPage>> → ページXに設定, ---------- → +1
     let currentPage = 1;
     let targetChunkIndex = -1;
 
     for (let i = 0; i < cpChunks.length; i++) {
         const chunk = cpChunks[i];
         if (chunk.type === 'separator') {
-            const pageHeaderMatch = chunk.content.match(/^\[(\d+)巻(\d+)P\]$/);
+            const isVolumeMarker = /^\[\d+巻\]$/.test(chunk.content);
             const exportPageMatch = chunk.content.match(/^<<(\d+)Page>>$/);
 
-            if (pageHeaderMatch) {
-                currentPage = parseInt(pageHeaderMatch[2], 10);
+            if (isVolumeMarker) {
+                // 巻マーカーはスキップ
             } else if (exportPageMatch) {
                 currentPage = parseInt(exportPageMatch[1], 10);
             } else {
@@ -624,7 +629,7 @@ function cpParseTextToChunks(inputText) {
     const parsed = [];
     let currentChunk = [];
 
-    const pageHeaderPattern = /^\[\d+巻\d+P\]$/;
+    const volumeMarkerPattern = /^\[\d+巻\]$/;
     const exportPagePattern = /^<<\d+Page>>$/;
 
     for (let i = 0; i < lines.length; i++) {
@@ -635,7 +640,7 @@ function cpParseTextToChunks(inputText) {
             continue;
         }
 
-        if (pageHeaderPattern.test(trimmed) || exportPagePattern.test(trimmed)) {
+        if (volumeMarkerPattern.test(trimmed) || exportPagePattern.test(trimmed)) {
             if (currentChunk.length > 0) {
                 parsed.push({ content: currentChunk.join('\n'), type: 'dialogue' });
                 currentChunk = [];
@@ -1157,7 +1162,8 @@ function cpUpdateConvertPreview() {
     const startPage = parseInt(document.getElementById('cpConvertStartPage').value) || 1;
 
     const header = '[COMIC-POT:' + sortMode + ']';
-    let preview = header + '\n\n';
+    const volStr = String(volume).padStart(2, '0');
+    let preview = header + '\n[' + volStr + '巻]\n';
     let pageNum = startPage;
     let isFirst = true;
 
@@ -1166,11 +1172,11 @@ function cpUpdateConvertPreview() {
             if (!isFirst) {
                 pageNum++;
             }
-            preview += '[' + volume + '巻' + pageNum + 'P]\n';
+            preview += '<<' + pageNum + 'Page>>\n';
             isFirst = false;
         } else {
             if (isFirst) {
-                preview += '[' + volume + '巻' + pageNum + 'P]\n';
+                preview += '<<' + pageNum + 'Page>>\n';
                 isFirst = false;
             }
             preview += chunk.content + '\n\n';
@@ -1187,9 +1193,16 @@ function cpApplyConvert() {
 
     cpComicPotHeader = '[COMIC-POT:' + sortMode + ']';
 
+    const volStr = String(volume).padStart(2, '0');
     const newChunks = [];
     let pageNum = startPage;
     let isFirst = true;
+
+    // 先頭に巻番号マーカーを挿入
+    newChunks.push({
+        content: '[' + volStr + '巻]',
+        type: 'separator'
+    });
 
     for (const chunk of cpChunks) {
         if (chunk.type === 'separator') {
@@ -1197,14 +1210,14 @@ function cpApplyConvert() {
                 pageNum++;
             }
             newChunks.push({
-                content: '[' + volume + '巻' + pageNum + 'P]',
+                content: '<<' + pageNum + 'Page>>',
                 type: 'separator'
             });
             isFirst = false;
         } else {
             if (isFirst) {
                 newChunks.push({
-                    content: '[' + volume + '巻' + pageNum + 'P]',
+                    content: '<<' + pageNum + 'Page>>',
                     type: 'separator'
                 });
                 isFirst = false;
