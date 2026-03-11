@@ -54,7 +54,7 @@ struct HandoffData {
 struct CalibrationParams {
     label: String,
     work: String,
-    volume: String,
+    volume: u32,
     #[serde(rename = "checkType")]
     check_type: String,
     items: Vec<serde_json::Value>,
