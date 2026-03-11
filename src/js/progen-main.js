@@ -15,6 +15,7 @@ import './progen-admin.js';
 import './progen-note-txt.js';
 import './progen-result-viewer.js';
 import './progen-comicpot.js';
+import './progen-viewer.js';
 
 // 全モジュール読み込み後に起動時の初期化を実行
 window.init();

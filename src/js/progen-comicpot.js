@@ -27,6 +27,7 @@ let cpSourcePage = 'extraction'; // 遷移元ページ
 let cpRubySelectionStart = 0;
 let cpRubySelectionEnd = 0;
 let cpRubySelectedText = '';
+let cpRubyMode = localStorage.getItem('cpRubyMode') || 'comicpot'; // 'comicpot' | 'standard'
 
 // ===== COMIC-POT スプリットビュー =====
 let cpResultPanelVisible = false;
@@ -38,7 +39,7 @@ let cpIsResizing = false;
 let cpEditTextArea, cpSelectModeEl, cpMoveButtonsEl, cpMoveCounterEl;
 let cpBtnMoveUp, cpBtnMoveDown, cpBtnCopy, cpBtnToggleMode;
 let cpBtnDeleteMark, cpBtnRuby, cpBtnConvert, cpBtnSave, cpBtnSaveAs;
-let cpCopyBtnFloat, cpStatusCopyBtn, cpStatusInfo, cpFileNameDisplay;
+let cpCopyBtnFloat, cpStatusInfo, cpFileNameDisplay;
 let cpContextBar, cpContextModeLabel, cpContextModeHint;
 let cpNotificationEl, cpNotificationInner;
 let cpResultPanelEl, cpResultPanelBody, cpEditorColumn, cpResizeHandle;
@@ -58,11 +59,10 @@ function cpInitDomRefs() {
     cpBtnConvert = document.getElementById('cpBtnConvert');
     cpBtnSave = document.getElementById('cpBtnSave');
     cpBtnSaveAs = document.getElementById('cpBtnSaveAs');
-    cpCopyBtnFloat = document.getElementById('cpCopyBtnFloat');
     cpContextBar = document.getElementById('cpContextBar');
     cpContextModeLabel = document.getElementById('cpContextModeLabel');
     cpContextModeHint = document.getElementById('cpContextModeHint');
-    cpStatusCopyBtn = document.getElementById('cpStatusCopyBtn');
+    cpCopyBtnFloat = document.getElementById('cpCopyBtnFloat');
     cpStatusInfo = document.getElementById('cpStatusInfo');
     cpFileNameDisplay = document.getElementById('cpFileNameDisplay');
     cpNotificationEl = document.getElementById('cpNotification');
@@ -80,7 +80,7 @@ function cpInitDomRefs() {
 }
 
 // ===== ページ遷移 =====
-function goToComicPotEditor(source) {
+function goToComicPotEditor(source, options) {
     cpSourcePage = source || 'extraction';
     cpInitDomRefs();
 
@@ -114,18 +114,16 @@ function goToComicPotEditor(source) {
         cpBtnLoadSerif.style.display = 'none';
     }
 
-    // スプリットビュー: トグルボタンは常に表示（どのソースからでも校正パネルを開けるように）
-    cpBtnTogglePanel.style.display = '';
-    cpPanelSep.style.display = '';
+    // スプリットビュー: トグルボタン（廃止済み — 校正結果パネルは常に表示）
+    if (cpBtnTogglePanel) cpBtnTogglePanel.style.display = '';
+    if (cpPanelSep) cpPanelSep.style.display = '';
 
-    if (cpSourcePage === 'proofreading') {
-        // 校正ページからの遷移時はデータがあれば自動表示
-        if (Object.keys(state.currentVariationData).length > 0 || state.currentSimpleData.length > 0) {
-            cpShowResultPanel();
-        }
-    } else {
-        // extraction/handoff時はパネルを閉じた状態でスタート
-        cpHideResultPanel();
+    // 校正結果パネルをデフォルトで表示（データの有無に関わらず）
+    cpShowResultPanel();
+
+    // ランディングからの場合はビューアータブで開く
+    if (options && options.showViewer) {
+        cpSwitchPanelTab('viewer');
     }
 }
 
@@ -260,6 +258,13 @@ function goBackFromComicPotEditor() {
     cpPanelCurrentTab = 'simple';
     cpPanelWidthPercent = 50;
 
+    // 作品タイトルが保存されていれば、JSONフォルダから自動選択を試みる
+    const pendingTitle = state.pendingWorkTitle;
+    if (pendingTitle) {
+        state.pendingWorkTitle = ''; // 消費
+        _autoSelectWorkJson(pendingTitle);
+    }
+
     const editorPage = document.getElementById('comicPotEditorPage');
     if (cpSourcePage === 'proofreading') {
         const proofreadingPage = document.getElementById('proofreadingPage');
@@ -285,6 +290,108 @@ function goBackFromComicPotEditor() {
     }
 }
 
+// JSONフォルダから作品タイトルに一致するJSONを自動選択（state更新のみ、画面遷移なし）
+async function _autoSelectWorkJson(workTitle) {
+    if (!window.electronAPI || !window.electronAPI.isElectron) return;
+    try {
+        const basePath = await window.electronAPI.getJsonFolderPath();
+        const rootResult = await window.electronAPI.listDirectory(basePath);
+        if (!rootResult.success) return;
+
+        // レーベルフォルダを走査して作品名.jsonを検索
+        const labelFolders = rootResult.items.filter(i => i.isDirectory);
+        for (const label of labelFolders) {
+            const labelResult = await window.electronAPI.listDirectory(label.path);
+            if (!labelResult.success) continue;
+            const match = labelResult.items.find(i =>
+                i.isFile && i.name.toLowerCase().endsWith('.json') &&
+                i.name.replace(/\.json$/i, '') === workTitle
+            );
+            if (match) {
+                console.log('自動選択: ' + match.path);
+                // JSONを読み込んでstate更新
+                const result = await window.electronAPI.readJsonFile(match.path);
+                if (!result.success) continue;
+
+                state.currentLoadedJson = result.data;
+                state.currentJsonPath = match.path;
+
+                // 表記ルールを読み込み
+                const data = result.data;
+                const isNewFormat = data.presetData !== undefined;
+                const proofRules = data.proofRules;
+                if (proofRules) {
+                    if (proofRules.proof && Array.isArray(proofRules.proof)) {
+                        state.currentProofRules = proofRules.proof;
+                        state.currentProofRules.forEach(r => {
+                            if (!r.category) r.category = 'basic';
+                            if (r.category === 'character' && r.addRuby === undefined) r.addRuby = true;
+                        });
+                    }
+                    if (proofRules.symbol && Array.isArray(proofRules.symbol)) {
+                        state.symbolRules = proofRules.symbol;
+                    }
+                    if (proofRules.options) {
+                        const opts = proofRules.options;
+                        if (opts.ngWordMasking !== undefined) state.optionNgWordMasking = opts.ngWordMasking;
+                        if (opts.punctuationToSpace !== undefined) state.optionPunctuationToSpace = opts.punctuationToSpace;
+                        if (opts.difficultRuby !== undefined) state.optionDifficultRuby = opts.difficultRuby;
+                        if (opts.typoCheck !== undefined) state.optionTypoCheck = opts.typoCheck;
+                        if (opts.missingCharCheck !== undefined) state.optionMissingCharCheck = opts.missingCharCheck;
+                        if (opts.nameRubyCheck !== undefined) state.optionNameRubyCheck = opts.nameRubyCheck;
+                        if (opts.nonJoyoCheck !== undefined) state.optionNonJoyoCheck = opts.nonJoyoCheck;
+                        if (opts.numberRulePersonCount !== undefined) state.numberRulePersonCount = opts.numberRulePersonCount;
+                        if (opts.numberRuleThingCount !== undefined) state.numberRuleThingCount = opts.numberRuleThingCount;
+                        if (opts.numberRuleMonth !== undefined) state.numberRuleMonth = opts.numberRuleMonth;
+                        if (opts.numberSubRulesEnabled !== undefined) state.numberSubRulesEnabled = opts.numberSubRulesEnabled;
+                    }
+                }
+
+                // 旧形式の場合は新形式に正規化
+                if (!isNewFormat) {
+                    const { proofRules: oldProof, ...rest } = data;
+                    state.currentLoadedJson = {
+                        proofRules: oldProof || { proof: [], symbol: [], options: {} },
+                        presetData: rest
+                    };
+                }
+
+                // レーベル情報をランディングのhidden inputに設定
+                const presetData = isNewFormat ? data.presetData : data;
+                const labelName = presetData.workInfo?.label || '';
+                if (labelName) {
+                    const landingLabel = document.getElementById('landingLabelSelect');
+                    if (landingLabel) landingLabel.value = labelName;
+                }
+
+                // JSON表示を更新
+                const jsonIndicator = document.getElementById('loadedJsonIndicator');
+                const jsonFilenameSpan = document.getElementById('loadedJsonFilename');
+                if (jsonIndicator && jsonFilenameSpan) {
+                    jsonFilenameSpan.textContent = match.name;
+                    jsonIndicator.style.display = 'flex';
+                }
+                const proofJsonIndicator = document.getElementById('proofreadingJsonIndicator');
+                const proofJsonFilename = document.getElementById('proofreadingJsonFilename');
+                if (proofJsonIndicator && proofJsonFilename) {
+                    proofJsonFilename.textContent = match.name;
+                    proofJsonIndicator.style.display = 'flex';
+                }
+
+                // 校正ページのオプションラベルを更新
+                if (typeof updateProofreadingOptionsLabel === 'function') {
+                    updateProofreadingOptionsLabel();
+                }
+
+                return;
+            }
+        }
+        console.log('自動選択: 一致する作品が見つかりませんでした: ' + workTitle);
+    } catch (e) {
+        console.error('自動選択エラー:', e);
+    }
+}
+
 // ===== COMIC-POT スプリットビュー機能 =====
 
 function cpToggleResultPanel() {
@@ -301,7 +408,7 @@ function cpShowResultPanel() {
     cpResultPanelEl.style.display = 'flex';
     cpResultPanelEl.style.width = cpPanelWidthPercent + '%';
     cpResizeHandle.style.display = 'block';
-    cpBtnTogglePanel.classList.add('cp-panel-active');
+    if (cpBtnTogglePanel) cpBtnTogglePanel.classList.add('cp-panel-active');
 
     // 最適なタブを自動選択
     if (cpPanelCurrentTab === 'variation' && Object.keys(state.currentVariationData).length === 0 && state.currentSimpleData.length > 0) {
@@ -328,8 +435,23 @@ function cpSwitchPanelTab(tab) {
     cpPanelCurrentTab = tab;
     cpPanelTabVariation.classList.toggle('active', tab === 'variation');
     cpPanelTabSimple.classList.toggle('active', tab === 'simple');
-    cpRenderPanelContent();
-    cpSetupPanelCategoryFilter();
+    const viewerTab = document.getElementById('cpPanelTabViewer');
+    if (viewerTab) viewerTab.classList.toggle('active', tab === 'viewer');
+
+    // ビューアーと校正結果の表示切替
+    const viewerBody = document.getElementById('cpViewerBody');
+    const filterEl = document.getElementById('cpPanelCategoryFilter');
+    if (tab === 'viewer') {
+        cpResultPanelBody.style.display = 'none';
+        if (viewerBody) viewerBody.style.display = 'flex';
+        if (filterEl) filterEl.style.display = 'none';
+    } else {
+        cpResultPanelBody.style.display = '';
+        if (viewerBody) viewerBody.style.display = 'none';
+        if (filterEl) filterEl.style.display = '';
+        cpRenderPanelContent();
+        cpSetupPanelCategoryFilter();
+    }
 }
 
 function goToResultViewerPageFromEditor() {
@@ -339,6 +461,9 @@ function goToResultViewerPageFromEditor() {
 function cpRenderPanelContent() {
     if (!cpResultPanelBody) return;
 
+    const jsonLoadBtn = '<button class="btn btn-small" onclick="cpLoadResultJson()" style="margin-top:8px;">'
+        + '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span> JSONを開く</button>';
+
     if (cpPanelCurrentTab === 'variation') {
         if (Object.keys(state.currentVariationData).length > 0) {
             renderCategoryTablesToElement(state.currentVariationData, cpResultPanelBody);
@@ -347,6 +472,7 @@ function cpRenderPanelContent() {
                 + '<p style="color:#999; margin-bottom:16px;">提案チェックのデータがありません</p>'
                 + '<button class="btn btn-purple btn-small" onclick="openResultPasteModalFor(\'variation\')" style="margin-top:8px;">'
                 + '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span> 貼り付け</button>'
+                + ' ' + jsonLoadBtn
                 + '</div>';
         }
     } else {
@@ -357,6 +483,7 @@ function cpRenderPanelContent() {
                 + '<p style="color:#999; margin-bottom:16px;">正誤チェックのデータがありません</p>'
                 + '<button class="btn btn-purple btn-small" onclick="openResultPasteModalFor(\'simple\')" style="margin-top:8px;">'
                 + '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span> 貼り付け</button>'
+                + ' ' + jsonLoadBtn
                 + '</div>';
         }
     }
@@ -406,6 +533,393 @@ function cpApplyPanelCategoryFilter() {
     } else {
         const filtered = state.currentSimpleData.filter(item => item.category === filterValue);
         renderSimpleResultToElement(filtered, cpResultPanelBody);
+    }
+}
+
+// ===== JSONブラウザ (MojiQ CalibrationPanel方式) =====
+const CP_JSON_BASE_PATH = 'G:\\共有ドライブ\\CLLENN\\編集部フォルダ\\編集企画部\\写植・校正用テキストログ';
+let cpJsonBrowserBasePath = '';
+let cpJsonBrowserCurrentPath = '';
+let cpJsonBrowserAllFiles = []; // 検索用キャッシュ
+let cpJsonBrowserSearchTimeout = null;
+
+async function cpOpenJsonBrowser() {
+    const modal = document.getElementById('cpJsonBrowserModal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+
+    const listEl = document.getElementById('cpJsonBrowserList');
+    listEl.innerHTML = '<div class="cp-json-browser-empty">読み込み中...</div>';
+
+    // 検索リセット
+    const searchInput = document.getElementById('cpJsonBrowserSearchInput');
+    if (searchInput) searchInput.value = '';
+    cpJsonBrowserClearSearch();
+
+    // ベースパスを試す
+    const testResult = await window.electronAPI.listDirectory(CP_JSON_BASE_PATH);
+    if (testResult.success) {
+        cpJsonBrowserBasePath = CP_JSON_BASE_PATH;
+    } else {
+        cpJsonBrowserBasePath = 'C:\\';
+    }
+    await cpJsonBrowserLoadFolder(cpJsonBrowserBasePath);
+
+    // バックグラウンドで全JSONファイルをキャッシュ（検索用）
+    cpJsonBrowserAllFiles = [];
+    _cpCacheJsonFilesRecursive(cpJsonBrowserBasePath);
+}
+
+function cpCloseJsonBrowser() {
+    const modal = document.getElementById('cpJsonBrowserModal');
+    if (modal) modal.style.display = 'none';
+    if (cpJsonBrowserSearchTimeout) {
+        clearTimeout(cpJsonBrowserSearchTimeout);
+        cpJsonBrowserSearchTimeout = null;
+    }
+}
+
+async function cpJsonBrowserLoadFolder(dirPath) {
+    cpJsonBrowserCurrentPath = dirPath;
+    const listEl = document.getElementById('cpJsonBrowserList');
+    listEl.innerHTML = '<div class="cp-json-browser-empty">読み込み中...</div>';
+
+    _cpUpdateBreadcrumb();
+
+    try {
+        const result = await window.electronAPI.listDirectory(dirPath);
+        if (!result.success) {
+            listEl.innerHTML = '<div class="cp-json-browser-empty">エラー: ' + _escHtml(result.error || '') + '</div>';
+            return;
+        }
+
+        _cpRenderFolderList(result.items);
+    } catch (error) {
+        listEl.innerHTML = '<div class="cp-json-browser-empty">エラー: ' + _escHtml(String(error)) + '</div>';
+    }
+}
+
+function _cpRenderFolderList(items) {
+    const folders = items.filter(i => i.isDirectory).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    const files = items.filter(i => i.isFile && i.name.toLowerCase().endsWith('.json')).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+    const allItems = [...folders, ...files];
+
+    const listEl = document.getElementById('cpJsonBrowserList');
+    if (allItems.length === 0) {
+        listEl.innerHTML = '<div class="cp-json-browser-empty">データがありません</div>';
+        return;
+    }
+
+    listEl.innerHTML = '';
+    allItems.forEach(item => {
+        const div = document.createElement('div');
+        if (item.isDirectory) {
+            div.className = 'cp-json-browser-item cp-json-browser-folder';
+            div.innerHTML = '<span class="cp-json-browser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>'
+                + '<span class="cp-json-browser-name">' + _escHtml(item.name) + '</span>';
+            div.addEventListener('click', () => cpJsonBrowserOpenFolder(item.path));
+        } else {
+            div.className = 'cp-json-browser-item cp-json-browser-file';
+            div.innerHTML = '<span class="cp-json-browser-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>'
+                + '<span class="cp-json-browser-name">' + _escHtml(item.name) + '</span>';
+            div.addEventListener('click', () => cpJsonBrowserOpenFile(item.path));
+        }
+        listEl.appendChild(div);
+    });
+}
+
+function cpJsonBrowserOpenFolder(dirPath) {
+    cpJsonBrowserLoadFolder(dirPath);
+}
+
+async function cpJsonBrowserOpenFile(filePath) {
+    cpCloseJsonBrowser();
+    // 親の親フォルダ名を作品タイトルとして保存（自動選択用）
+    // パス例: .../作品名/サブフォルダ/check.json → parts[-3] = 作品名
+    const parts = filePath.replace(/\\/g, '/').split('/');
+    if (parts.length >= 3) {
+        state.pendingWorkTitle = parts[parts.length - 3]; // 親の親フォルダ名
+    }
+    await _loadJsonFromPath(filePath);
+}
+
+function _cpUpdateBreadcrumb() {
+    const breadcrumbEl = document.getElementById('cpJsonBrowserBreadcrumb');
+    if (!breadcrumbEl || !cpJsonBrowserBasePath || !cpJsonBrowserCurrentPath) return;
+
+    const normalizedBase = cpJsonBrowserBasePath.replace(/\\/g, '/');
+    const normalizedCurrent = cpJsonBrowserCurrentPath.replace(/\\/g, '/');
+
+    breadcrumbEl.innerHTML = '';
+
+    // TOP
+    const topSpan = document.createElement('span');
+    topSpan.className = 'cp-json-browser-crumb cp-json-browser-crumb-root';
+    topSpan.textContent = 'TOP';
+    topSpan.addEventListener('click', () => cpJsonBrowserLoadFolder(cpJsonBrowserBasePath));
+    breadcrumbEl.appendChild(topSpan);
+
+    if (normalizedCurrent !== normalizedBase) {
+        const relative = normalizedCurrent.substring(normalizedBase.length + 1);
+        const parts = relative.split('/');
+        let accumulated = cpJsonBrowserBasePath;
+
+        parts.forEach((part, i) => {
+            accumulated = accumulated + '\\' + part;
+            const isLast = i === parts.length - 1;
+
+            const sep = document.createElement('span');
+            sep.className = 'cp-json-browser-crumb-sep';
+            sep.textContent = '›';
+            breadcrumbEl.appendChild(sep);
+
+            const crumb = document.createElement('span');
+            crumb.className = 'cp-json-browser-crumb' + (isLast ? ' cp-json-browser-crumb-current' : '');
+            crumb.textContent = part;
+            if (!isLast) {
+                const targetPath = accumulated;
+                crumb.addEventListener('click', () => cpJsonBrowserLoadFolder(targetPath));
+            }
+            breadcrumbEl.appendChild(crumb);
+        });
+    }
+}
+
+// ===== 検索機能 =====
+async function _cpCacheJsonFilesRecursive(dirPath) {
+    try {
+        const result = await window.electronAPI.listDirectory(dirPath);
+        if (!result.success) return;
+
+        for (const item of result.items) {
+            if (item.isDirectory) {
+                await _cpCacheJsonFilesRecursive(item.path);
+            } else if (item.isFile && item.name.toLowerCase().endsWith('.json')) {
+                const relativePath = item.path.replace(cpJsonBrowserBasePath, '').replace(/^[\\\/]/, '');
+                cpJsonBrowserAllFiles.push({
+                    name: item.name,
+                    path: item.path,
+                    relativePath: relativePath
+                });
+            }
+        }
+    } catch (e) {
+        console.error('JSON cache error:', e);
+    }
+}
+
+function cpJsonBrowserFilter() {
+    const input = document.getElementById('cpJsonBrowserSearchInput');
+    const clearBtn = document.getElementById('cpJsonBrowserSearchClear');
+    const query = (input?.value || '').trim();
+
+    clearBtn.style.display = query ? 'block' : 'none';
+
+    if (cpJsonBrowserSearchTimeout) clearTimeout(cpJsonBrowserSearchTimeout);
+
+    if (!query) {
+        cpJsonBrowserClearSearch();
+        return;
+    }
+
+    cpJsonBrowserSearchTimeout = setTimeout(() => {
+        _cpPerformSearch(query);
+    }, 300);
+}
+
+function _cpPerformSearch(query) {
+    const normalizedQuery = query.toLowerCase();
+    const results = cpJsonBrowserAllFiles.filter(file =>
+        file.name.toLowerCase().includes(normalizedQuery) ||
+        file.relativePath.toLowerCase().includes(normalizedQuery)
+    );
+    _cpDisplaySearchResults(results, query);
+}
+
+function _cpDisplaySearchResults(results, query) {
+    const searchResultsEl = document.getElementById('cpJsonBrowserSearchResults');
+    const listEl = document.getElementById('cpJsonBrowserList');
+    const breadcrumbEl = document.getElementById('cpJsonBrowserBreadcrumb');
+    if (!searchResultsEl) return;
+
+    listEl.style.display = 'none';
+    breadcrumbEl.style.display = 'none';
+    searchResultsEl.style.display = 'block';
+    searchResultsEl.innerHTML = '';
+
+    if (results.length === 0) {
+        searchResultsEl.innerHTML = '<div class="cp-json-browser-empty">検索結果がありません</div>';
+        return;
+    }
+
+    const countEl = document.createElement('div');
+    countEl.className = 'cp-json-browser-search-count';
+    countEl.textContent = results.length + '件のJSONファイルが見つかりました';
+    searchResultsEl.appendChild(countEl);
+
+    results.forEach(file => {
+        const div = document.createElement('div');
+        div.className = 'cp-json-browser-item cp-json-browser-file cp-json-browser-search-result';
+
+        const icon = document.createElement('span');
+        icon.className = 'cp-json-browser-icon';
+        icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        div.appendChild(icon);
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'cp-json-browser-name';
+        nameEl.innerHTML = _cpHighlightMatch(file.name, query);
+        div.appendChild(nameEl);
+
+        const pathEl = document.createElement('div');
+        pathEl.className = 'cp-json-browser-search-path';
+        pathEl.innerHTML = _cpHighlightMatch(file.relativePath, query);
+        div.appendChild(pathEl);
+
+        div.addEventListener('click', () => cpJsonBrowserOpenFile(file.path));
+        searchResultsEl.appendChild(div);
+    });
+}
+
+function _cpHighlightMatch(text, query) {
+    if (!query) return _escHtml(text);
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    const idx = lowerText.indexOf(lowerQuery);
+    if (idx === -1) return _escHtml(text);
+    return _escHtml(text.substring(0, idx))
+        + '<mark class="cp-json-browser-highlight">' + _escHtml(text.substring(idx, idx + query.length)) + '</mark>'
+        + _escHtml(text.substring(idx + query.length));
+}
+
+function cpJsonBrowserClearSearch() {
+    const searchResultsEl = document.getElementById('cpJsonBrowserSearchResults');
+    const listEl = document.getElementById('cpJsonBrowserList');
+    const breadcrumbEl = document.getElementById('cpJsonBrowserBreadcrumb');
+    const clearBtn = document.getElementById('cpJsonBrowserSearchClear');
+
+    if (searchResultsEl) { searchResultsEl.style.display = 'none'; searchResultsEl.innerHTML = ''; }
+    if (listEl) listEl.style.display = '';
+    if (breadcrumbEl) breadcrumbEl.style.display = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+}
+
+// 互換用（HTMLから参照）
+function cpJsonBrowserGoUp() {
+    if (!cpJsonBrowserCurrentPath || !cpJsonBrowserBasePath) return;
+    const normalizedBase = cpJsonBrowserBasePath.replace(/\\/g, '/');
+    const normalizedCurrent = cpJsonBrowserCurrentPath.replace(/\\/g, '/');
+    if (normalizedCurrent === normalizedBase) return;
+    const parts = cpJsonBrowserCurrentPath.replace(/\//g, '\\').split('\\').filter(Boolean);
+    parts.pop();
+    let parent = parts.join('\\');
+    if (parts.length === 1 && parts[0].endsWith(':')) parent += '\\';
+    if (parent.length < cpJsonBrowserBasePath.length) return;
+    cpJsonBrowserLoadFolder(parent);
+}
+
+function cpJsonBrowserRefresh() {
+    if (cpJsonBrowserCurrentPath) cpJsonBrowserLoadFolder(cpJsonBrowserCurrentPath);
+}
+
+// 旧API互換（export用）
+function cpJsonBrowserNavigate(dirPath) { cpJsonBrowserLoadFolder(dirPath); }
+function cpJsonBrowserSelect() {} // no-op
+function cpJsonBrowserOpen() {} // no-op
+
+function _escHtml(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+// ===== COMIC-Bridge形式のJSON変換 =====
+function _convertBridgeItems(items) {
+    return items.map(item => {
+        const pageText = item.page || '';
+        const vp = window.extractVolumeAndPage ? window.extractVolumeAndPage(pageText) : { volumeNum: 0, pageNum: 0 };
+        return {
+            category: item.category || '',
+            page: pageText,
+            volumeNum: vp.volumeNum,
+            pageNum: vp.pageNum,
+            excerpt: item.excerpt || '',
+            content: item.content || '',
+        };
+    });
+}
+
+// ===== 校正結果JSON読み込み =====
+function cpLoadResultJson() {
+    cpOpenJsonBrowser();
+}
+
+async function _loadJsonFromPath(filePath) {
+    try {
+        const result = await window.electronAPI.readJsonFile(filePath);
+        if (!result.success) {
+            cpShowNotify('ファイルの読み込みに失敗しました', 'error');
+            return;
+        }
+        const json = result.data;
+
+        // フォーマット判定
+        if (json.checks && (json.checks.variation || json.checks.simple)) {
+            // COMIC-Bridge 写植確認形式: checkKindで正誤/提案を振り分け
+            const allItems = [];
+            if (json.checks.variation && json.checks.variation.items) allItems.push(...json.checks.variation.items);
+            if (json.checks.simple && json.checks.simple.items) allItems.push(...json.checks.simple.items);
+            const correctnessItems = _convertBridgeItems(allItems.filter(i => i.checkKind === 'correctness'));
+            const proposalItems = _convertBridgeItems(allItems.filter(i => i.checkKind === 'proposal'));
+            if (proposalItems.length > 0) {
+                state.currentVariationData = window.groupByCategory ? window.groupByCategory(proposalItems) : {};
+            }
+            if (correctnessItems.length > 0) {
+                state.currentSimpleData = correctnessItems;
+            }
+        } else if (json.type === 'progen-result') {
+            if (json.variationData) state.currentVariationData = json.variationData;
+            if (json.simpleData) state.currentSimpleData = json.simpleData;
+        } else if (Array.isArray(json)) {
+            state.currentSimpleData = json;
+        } else if (json.variationData || json.simpleData) {
+            if (json.variationData) state.currentVariationData = json.variationData;
+            if (json.simpleData) state.currentSimpleData = json.simpleData;
+        } else {
+            cpShowNotify('不明なJSONフォーマットです', 'error');
+            return;
+        }
+
+        // データがあるタブに自動切替
+        const hasVariation = Object.keys(state.currentVariationData).length > 0;
+        const hasSimple = state.currentSimpleData.length > 0;
+        if (hasSimple) {
+            cpPanelCurrentTab = 'simple';
+        } else if (hasVariation) {
+            cpPanelCurrentTab = 'variation';
+        }
+
+        // パネルを表示して更新
+        cpShowResultPanel();
+
+        const fileName = filePath.split(/[/\\]/).pop();
+        cpShowNotify(fileName + ' を読み込みました', 'success');
+    } catch (e) {
+        cpShowNotify('JSONの解析に失敗しました: ' + e.message, 'error');
+    }
+}
+
+// ===== 校正結果JSON保存 =====
+async function cpSaveResultJson() {
+    const data = {
+        type: 'progen-result',
+        variationData: state.currentVariationData,
+        simpleData: state.currentSimpleData,
+    };
+    const jsonStr = JSON.stringify(data, null, 2);
+    const result = await window.electronAPI.showSaveJsonDialog('校正結果.json');
+    if (!result.success) return;
+    const writeResult = await window.electronAPI.writeTextFile(result.filePath, jsonStr);
+    if (writeResult.success) {
+        cpShowNotify('保存しました', 'success');
+    } else {
+        cpShowNotify('保存に失敗しました', 'error');
     }
 }
 
@@ -478,8 +992,8 @@ function scrollTextareaToPosition(textarea, charPos) {
 
     document.body.removeChild(ghost);
 
-    // 元のtextareaに適用（表示領域の中央に来るよう半分戻す）
-    textarea.scrollTop = Math.max(0, scrollPos - textarea.clientHeight / 14);
+    // 元のtextareaに適用（該当位置が最上部に来るようにする）
+    textarea.scrollTop = scrollPos;
 }
 
 function cpJumpToExcerpt(pageText, excerptText) {
@@ -639,7 +1153,10 @@ function cpJumpInSelectMode(pageNum, searchText) {
     const el = cpSelectModeEl.querySelector(`[data-index="${targetChunkIndex}"]`);
     if (!el) return;
 
-    el.scrollIntoView({ behavior: 'instant', block: 'center' });
+    // ページセパレータが直前にあればそこにスクロール（ページ表記を上部に表示）
+    const scrollTarget = el.previousElementSibling && el.previousElementSibling.classList.contains('cp-chunk-separator')
+        ? el.previousElementSibling : el;
+    scrollTarget.scrollIntoView({ behavior: 'instant', block: 'start' });
 
     // 前回のハイライトをクリア
     clearTimeout(cpJumpHighlightTimer);
@@ -654,12 +1171,17 @@ function cpJumpInSelectMode(pageNum, searchText) {
 
 // ===== 通知 =====
 let cpNotifyTimer = null;
-function cpShowNotify(message, color) {
+function cpShowNotify(message, type) {
     clearTimeout(cpNotifyTimer);
-    cpNotificationInner.style.background = color || 'var(--sage)';
+    const colors = {
+        success: 'var(--sage)',
+        error: 'var(--warm-red)',
+        warning: '#d97706',
+    };
+    cpNotificationInner.style.background = colors[type] || type || 'var(--sage)';
     cpNotificationInner.textContent = message;
     cpNotificationEl.classList.add('show');
-    cpNotifyTimer = setTimeout(() => cpNotificationEl.classList.remove('show'), 1500);
+    cpNotifyTimer = setTimeout(() => cpNotificationEl.classList.remove('show'), 2500);
 }
 
 // ===== パース =====
@@ -748,21 +1270,23 @@ function cpRender() {
 
     const hasText = cpText && cpText.trim() !== '';
     cpBtnCopy.disabled = !hasText;
-    cpCopyBtnFloat.style.display = hasText ? 'block' : 'none';
-    cpStatusCopyBtn.style.display = hasText ? 'inline-block' : 'none';
+
+    cpCopyBtnFloat.style.display = hasText ? 'flex' : 'none';
 
     // コンテキストバー更新
     cpContextBar.style.display = hasText ? 'flex' : 'none';
+    const segSelect = document.getElementById('cpModeSegSelect');
+    const segEdit = document.getElementById('cpModeSegEdit');
     if (cpIsEditing) {
         cpContextBar.classList.add('editing');
-        cpContextModeLabel.textContent = '編集モード';
-        cpContextModeHint.textContent = '▸ 選択モードへ';
+        if (segSelect) segSelect.classList.remove('active');
+        if (segEdit) segEdit.classList.add('active');
         cpBtnDeleteMark.style.display = 'none';
         cpBtnRuby.style.display = 'inline-block';
     } else {
         cpContextBar.classList.remove('editing');
-        cpContextModeLabel.textContent = '選択モード';
-        cpContextModeHint.textContent = '▸ 編集モードへ';
+        if (segSelect) segSelect.classList.add('active');
+        if (segEdit) segEdit.classList.remove('active');
         cpBtnDeleteMark.style.display = 'inline-block';
         cpBtnRuby.style.display = 'none';
     }
@@ -1108,6 +1632,43 @@ function cpToggleDeleteMark() {
 }
 
 // ===== ルビ付け =====
+function cpFormatRuby(parent, ruby) {
+    if (cpRubyMode === 'standard') {
+        return parent + '（' + ruby + '）';
+    }
+    return '[' + parent + '](' + ruby + ')';
+}
+
+function cpFormatRubyPlaceholder(parent) {
+    if (cpRubyMode === 'standard') {
+        return parent + '（...）';
+    }
+    return '[' + parent + '](...)';
+}
+
+function cpSwitchRubyMode(mode) {
+    cpRubyMode = mode;
+    localStorage.setItem('cpRubyMode', mode);
+
+    // ボタンのactive状態を更新
+    document.querySelectorAll('.cp-ruby-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.rubyMode === mode);
+    });
+
+    // プレビューを再描画
+    cpUpdateRubyPreview();
+}
+
+function cpUpdateRubyPreview() {
+    const ruby = document.getElementById('cpRubyInput').value;
+    const preview = document.getElementById('cpRubyResultPreview');
+    if (ruby) {
+        preview.textContent = cpFormatRuby(cpRubySelectedText, ruby);
+    } else {
+        preview.textContent = cpFormatRubyPlaceholder(cpRubySelectedText);
+    }
+}
+
 function cpOpenRubyModal() {
     if (!cpIsEditing) {
         cpShowNotify('編集モードで文字を選択してください', '#f59e0b');
@@ -1129,7 +1690,12 @@ function cpOpenRubyModal() {
 
     document.getElementById('cpRubyParentPreview').textContent = selected;
     document.getElementById('cpRubyInput').value = '';
-    document.getElementById('cpRubyResultPreview').textContent = '[' + selected + '](...)';
+    document.getElementById('cpRubyResultPreview').textContent = cpFormatRubyPlaceholder(selected);
+
+    // モードボタンの状態を復元
+    document.querySelectorAll('.cp-ruby-mode-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.rubyMode === cpRubyMode);
+    });
 
     document.getElementById('cpRubyModal').classList.add('show');
     setTimeout(() => document.getElementById('cpRubyInput').focus(), 50);
@@ -1147,15 +1713,15 @@ function cpApplyRuby() {
         return;
     }
 
-    const before = cpEditTextArea.value.substring(0, cpRubySelectionStart);
-    const after = cpEditTextArea.value.substring(cpRubySelectionEnd);
-    const replacement = '[' + cpRubySelectedText + '](' + rubyText + ')';
-
-    const newText = before + replacement + after;
+    const replacement = cpFormatRuby(cpRubySelectedText, rubyText);
     const scrollTop = cpEditTextArea.scrollTop;
-    cpEditTextArea.value = newText;
 
-    let content = newText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    // Undo対応: execCommand('insertText') でブラウザのundoスタックに載せる
+    cpEditTextArea.focus();
+    cpEditTextArea.setSelectionRange(cpRubySelectionStart, cpRubySelectionEnd);
+    document.execCommand('insertText', false, replacement);
+
+    let content = cpEditTextArea.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     cpComicPotHeader = cpExtractComicPotHeader(content);
     cpText = content;
     cpChunks = cpParseTextToChunks(content);
@@ -1473,6 +2039,40 @@ function cpSetupEventListeners() {
     // スプリットビュー: リサイズハンドル初期化
     cpSetupResizeHandle();
 
+    // テキストエリアへのD&D（TXTファイルドロップで読み込み）
+    if (window._registerDragDropHandler) {
+        // ドラッグ中のビジュアルフィードバック
+        document.addEventListener('tauri-drag-enter', () => {
+            const editorPage = document.getElementById('comicPotEditorPage');
+            if (editorPage && editorPage.style.display !== 'none') {
+                cpEditorColumn.classList.add('drag-over');
+            }
+        });
+        document.addEventListener('tauri-drag-leave', () => {
+            cpEditorColumn.classList.remove('drag-over');
+        });
+
+        window._registerDragDropHandler((paths) => {
+            cpEditorColumn.classList.remove('drag-over');
+
+            const editorPage = document.getElementById('comicPotEditorPage');
+            if (!editorPage || editorPage.style.display === 'none') return false;
+
+            const txtPaths = paths.filter(p => p.toLowerCase().endsWith('.txt'));
+            if (txtPaths.length === 0) return false;
+
+            window.electronAPI.readDroppedTxtFiles(txtPaths).then(result => {
+                if (!result.success || result.files.length === 0) return;
+                if (result.files.length === 1) {
+                    cpApplySerifFile(result.files[0]);
+                } else {
+                    cpOpenSerifSelectModal(result.files);
+                }
+            });
+            return true;
+        });
+    }
+
     // テキストエリア入力
     cpEditTextArea.addEventListener('input', () => {
         let content = cpEditTextArea.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -1482,21 +2082,13 @@ function cpSetupEventListeners() {
         cpUpdateStatusBar();
         const hasText = cpText && cpText.trim() !== '';
         cpBtnCopy.disabled = !hasText;
-        cpCopyBtnFloat.style.display = hasText ? 'block' : 'none';
-        cpStatusCopyBtn.style.display = hasText ? 'inline-block' : 'none';
+    
+        cpCopyBtnFloat.style.display = hasText ? 'flex' : 'none';
         cpBtnConvert.disabled = !hasText;
     });
 
     // ルビ入力のリアルタイムプレビュー
-    document.getElementById('cpRubyInput').addEventListener('input', () => {
-        const ruby = document.getElementById('cpRubyInput').value;
-        const preview = document.getElementById('cpRubyResultPreview');
-        if (ruby) {
-            preview.textContent = '[' + cpRubySelectedText + '](' + ruby + ')';
-        } else {
-            preview.textContent = '[' + cpRubySelectedText + '](...)';
-        }
-    });
+    document.getElementById('cpRubyInput').addEventListener('input', cpUpdateRubyPreview);
 
     // ルビモーダルでEnterキーで適用
     document.getElementById('cpRubyInput').addEventListener('keydown', (e) => {
@@ -1564,8 +2156,18 @@ function cpSetupEventListeners() {
     });
 }
 
+// ===== ビューアー連動: ページ同期 =====
+function cpSyncToPage(pageNum) {
+    if (!cpText) return;
+    if (cpIsEditing) {
+        cpJumpInTextarea(pageNum, '');
+    } else {
+        cpJumpInSelectMode(pageNum, '');
+    }
+}
+
 // ES Module exports
-export { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners };
+export { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners });
+Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder });

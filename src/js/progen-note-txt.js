@@ -64,6 +64,16 @@ let selectedTxtFiles = []; // 選択されたTXTファイルのリスト
 // TXTソース選択モーダルを開く
 function openTxtSourceSelectModal() {
     document.getElementById('txtSourceSelectModal').style.display = 'flex';
+
+    // ドロップゾーンの初期化（初回のみ）
+    const dropZone = document.getElementById('txtSourceDropZone');
+    if (dropZone && !dropZone._dropZoneInitialized) {
+        window.setupDropZone(dropZone, (fakeInput) => {
+            closeTxtSourceSelectModal();
+            window.loadProofreadingFiles(fakeInput);
+        });
+        dropZone._dropZoneInitialized = true;
+    }
 }
 
 // TXTソース選択モーダルを閉じる

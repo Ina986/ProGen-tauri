@@ -3,8 +3,15 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use tauri::{Emitter, Manager};
+
+// プレビューキャッシュ（メモリ: パス→キャッシュファイルパス）
+static PREVIEW_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+fn preview_cache() -> &'static Mutex<HashMap<String, String>> {
+    PREVIEW_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 // ========================================
 // ベースパス定義（Gドライブ）
@@ -203,18 +210,18 @@ fn list_directory(dir_path: Option<String>) -> serde_json::Value {
     let target = dir_path.unwrap_or_else(|| JSON_FOLDER_BASE_PATH.to_string());
     match fs::read_dir(&target) {
         Ok(entries) => {
-            let items: Vec<DirItem> = entries
-                .flatten()
-                .filter_map(|e| {
-                    let ft = e.file_type().ok()?;
-                    Some(DirItem {
+            let mut items: Vec<DirItem> = Vec::new();
+            for entry in entries {
+                if let Ok(e) = entry {
+                    let path = e.path();
+                    items.push(DirItem {
                         name: e.file_name().to_string_lossy().to_string(),
-                        path: e.path().to_string_lossy().to_string(),
-                        is_directory: ft.is_dir(),
-                        is_file: ft.is_file(),
-                    })
-                })
-                .collect();
+                        path: path.to_string_lossy().to_string(),
+                        is_directory: path.is_dir(),
+                        is_file: path.is_file(),
+                    });
+                }
+            }
             serde_json::json!({ "success": true, "items": items, "currentPath": target })
         }
         Err(e) => serde_json::json!({ "success": false, "error": e.to_string() }),
@@ -377,18 +384,18 @@ fn list_txt_directory(dir_path: Option<String>) -> serde_json::Value {
     let target = dir_path.unwrap_or_else(|| TXT_FOLDER_BASE_PATH.to_string());
     match fs::read_dir(&target) {
         Ok(entries) => {
-            let items: Vec<DirItem> = entries
-                .flatten()
-                .filter_map(|e| {
-                    let ft = e.file_type().ok()?;
-                    Some(DirItem {
+            let mut items: Vec<DirItem> = Vec::new();
+            for entry in entries {
+                if let Ok(e) = entry {
+                    let path = e.path();
+                    items.push(DirItem {
                         name: e.file_name().to_string_lossy().to_string(),
-                        path: e.path().to_string_lossy().to_string(),
-                        is_directory: ft.is_dir(),
-                        is_file: ft.is_file(),
-                    })
-                })
-                .collect();
+                        path: path.to_string_lossy().to_string(),
+                        is_directory: path.is_dir(),
+                        is_file: path.is_file(),
+                    });
+                }
+            }
             serde_json::json!({ "success": true, "items": items, "currentPath": target })
         }
         Err(e) => serde_json::json!({ "success": false, "error": e.to_string() }),
@@ -775,6 +782,525 @@ async fn check_for_updates(app: tauri::AppHandle) {
 }
 
 // ========================================
+// 画像ビューアー
+// ========================================
+
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "tif", "tiff", "bmp", "gif", "psd", "webp", "pdf",
+];
+
+#[tauri::command]
+fn list_image_files(dir_path: String) -> serde_json::Value {
+    let path = Path::new(&dir_path);
+    if !path.is_dir() {
+        return serde_json::json!({ "success": false, "error": "ディレクトリが見つかりません" });
+    }
+    let mut files: Vec<serde_json::Value> = Vec::new();
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if !p.is_file() {
+                continue;
+            }
+            if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                if IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+                    let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    let size = fs::metadata(&p).map(|m| m.len()).unwrap_or(0);
+                    files.push(serde_json::json!({
+                        "name": name,
+                        "path": p.to_string_lossy().to_string(),
+                        "size": size,
+                    }));
+                }
+            }
+        }
+    }
+    // 自然順ソート
+    files.sort_by(|a, b| {
+        let na = a["name"].as_str().unwrap_or("");
+        let nb = b["name"].as_str().unwrap_or("");
+        natord_cmp(na, nb)
+    });
+    serde_json::json!({ "success": true, "files": files })
+}
+
+/// 自然順比較（数字を数値として比較）
+fn natord_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    let mut ai = a.chars().peekable();
+    let mut bi = b.chars().peekable();
+    loop {
+        match (ai.peek(), bi.peek()) {
+            (None, None) => return std::cmp::Ordering::Equal,
+            (None, Some(_)) => return std::cmp::Ordering::Less,
+            (Some(_), None) => return std::cmp::Ordering::Greater,
+            (Some(&ac), Some(&bc)) => {
+                if ac.is_ascii_digit() && bc.is_ascii_digit() {
+                    let an = collect_number(&mut ai);
+                    let bn = collect_number(&mut bi);
+                    match an.cmp(&bn) {
+                        std::cmp::Ordering::Equal => continue,
+                        other => return other,
+                    }
+                } else {
+                    let al = ac.to_lowercase().next().unwrap_or(ac);
+                    let bl = bc.to_lowercase().next().unwrap_or(bc);
+                    match al.cmp(&bl) {
+                        std::cmp::Ordering::Equal => {
+                            ai.next();
+                            bi.next();
+                        }
+                        other => return other,
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn collect_number(iter: &mut std::iter::Peekable<std::str::Chars>) -> u64 {
+    let mut n: u64 = 0;
+    while let Some(&c) = iter.peek() {
+        if c.is_ascii_digit() {
+            n = n.saturating_mul(10).saturating_add(c as u64 - '0' as u64);
+            iter.next();
+        } else {
+            break;
+        }
+    }
+    n
+}
+
+#[tauri::command]
+fn list_image_files_from_paths(paths: Vec<String>) -> serde_json::Value {
+    let mut files: Vec<serde_json::Value> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+
+    for p in &paths {
+        let path = Path::new(p);
+        if path.is_dir() {
+            if let Ok(entries) = fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let ep = entry.path();
+                    if !ep.is_file() { continue; }
+                    if let Some(ext) = ep.extension().and_then(|e| e.to_str()) {
+                        if IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+                            let ps = ep.to_string_lossy().to_string();
+                            if seen.insert(ps.clone()) {
+                                let name = ep.file_name().unwrap_or_default().to_string_lossy().to_string();
+                                let size = fs::metadata(&ep).map(|m| m.len()).unwrap_or(0);
+                                files.push(serde_json::json!({ "name": name, "path": ps, "size": size }));
+                            }
+                        }
+                    }
+                }
+            }
+        } else if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if IMAGE_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+                    let ps = path.to_string_lossy().to_string();
+                    if seen.insert(ps.clone()) {
+                        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                        let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+                        files.push(serde_json::json!({ "name": name, "path": ps, "size": size }));
+                    }
+                }
+            }
+        }
+    }
+
+    files.sort_by(|a, b| {
+        let na = a["name"].as_str().unwrap_or("");
+        let nb = b["name"].as_str().unwrap_or("");
+        natord_cmp(na, nb)
+    });
+
+    let folder_path = if let Some(first) = files.first() {
+        Path::new(first["path"].as_str().unwrap_or(""))
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    serde_json::json!({ "success": true, "files": files, "folderPath": folder_path })
+}
+
+#[tauri::command]
+fn read_dropped_txt_files(paths: Vec<String>) -> serde_json::Value {
+    let mut files: Vec<serde_json::Value> = Vec::new();
+    for p in &paths {
+        let path = Path::new(p);
+        if !path.is_file() { continue; }
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+        if ext != "txt" { continue; }
+        if let Ok(content) = fs::read_to_string(path) {
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+            files.push(serde_json::json!({ "name": name, "content": content, "size": size }));
+        }
+    }
+    serde_json::json!({ "success": true, "files": files })
+}
+
+#[tauri::command]
+async fn load_image_preview(file_path: String, max_size: u32) -> serde_json::Value {
+    // 非同期でブロッキング処理を実行（UIフリーズ防止）
+    match tauri::async_runtime::spawn_blocking(move || {
+        load_image_preview_sync(&file_path, max_size)
+    }).await {
+        Ok(result) => result,
+        Err(e) => serde_json::json!({ "success": false, "error": format!("タスクエラー: {}", e) }),
+    }
+}
+
+fn load_image_preview_sync(file_path: &str, max_size: u32) -> serde_json::Value {
+    let path = Path::new(file_path);
+    if !path.is_file() {
+        return serde_json::json!({ "success": false, "error": "ファイルが見つかりません" });
+    }
+
+    // PDFはフロントエンド（PDF.js）で処理するためスキップ
+    if let Some(ext) = path.extension() {
+        if ext.to_ascii_lowercase() == "pdf" {
+            return serde_json::json!({ "success": false, "error": "PDF is handled by frontend" });
+        }
+    }
+
+    // ディスクキャッシュキーを生成（ファイルパス + 更新日時 + maxSize）
+    let modified_secs = fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let file_name = path.file_stem().unwrap_or_default().to_string_lossy();
+    let cache_key = format!("{}_{}", file_path, modified_secs);
+    let cache_filename = format!("progen_preview_{}_{}_{}",
+        file_name.chars().take(50).collect::<String>(),
+        modified_secs, max_size);
+
+    // メモリキャッシュチェック
+    if let Ok(cache) = preview_cache().lock() {
+        if let Some(cached_path) = cache.get(&cache_key) {
+            if Path::new(cached_path).exists() {
+                // キャッシュヒット: 元画像のサイズを返す
+                let (ow, oh) = get_original_dimensions(path);
+                return serde_json::json!({
+                    "success": true,
+                    "filePath": cached_path,
+                    "originalWidth": ow,
+                    "originalHeight": oh,
+                });
+            }
+        }
+    }
+
+    // ディスクキャッシュチェック
+    let cache_dir = std::env::temp_dir();
+    let cache_path = cache_dir.join(format!("{}.jpg", cache_filename));
+    if cache_path.exists() {
+        let cache_path_str = cache_path.to_string_lossy().to_string();
+        if let Ok(mut cache) = preview_cache().lock() {
+            cache.insert(cache_key, cache_path_str.clone());
+        }
+        let (ow, oh) = get_original_dimensions(path);
+        return serde_json::json!({
+            "success": true,
+            "filePath": cache_path_str,
+            "originalWidth": ow,
+            "originalHeight": oh,
+        });
+    }
+
+    // キャッシュなし: 画像を生成
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+
+    let img = if ext == "psd" {
+        match load_psd_image(path) {
+            Ok(i) => i,
+            Err(e) => return serde_json::json!({ "success": false, "error": e }),
+        }
+    } else {
+        let data = match fs::read(path) {
+            Ok(d) => d,
+            Err(e) => return serde_json::json!({ "success": false, "error": e.to_string() }),
+        };
+        match image::load_from_memory(&data) {
+            Ok(i) => i,
+            Err(e) => return serde_json::json!({ "success": false, "error": format!("画像読み込みエラー: {}", e) }),
+        }
+    };
+
+    encode_preview_to_disk(&img, max_size, &cache_path, &cache_key)
+}
+
+/// PSDファイルのヘッダーからオリジナルサイズを取得
+fn get_original_dimensions(path: &Path) -> (u32, u32) {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    if ext == "psd" {
+        if let Ok(data) = fs::read(path) {
+            if data.len() >= 26 && &data[0..4] == b"8BPS" {
+                let h = u32::from_be_bytes([data[14], data[15], data[16], data[17]]);
+                let w = u32::from_be_bytes([data[18], data[19], data[20], data[21]]);
+                return (w, h);
+            }
+        }
+        (0, 0)
+    } else {
+        // 通常画像: imageクレートのdimensions(メタデータのみ読む)
+        image::image_dimensions(path).unwrap_or((0, 0))
+    }
+}
+
+/// PSDファイルからDynamicImageを構築（compositeイメージ）
+fn load_psd_image(path: &Path) -> Result<image::DynamicImage, String> {
+    let data = fs::read(path).map_err(|e| e.to_string())?;
+
+    if data.len() < 26 || &data[0..4] != b"8BPS" {
+        return Err("不正なPSDファイル".to_string());
+    }
+
+    let version = u16::from_be_bytes([data[4], data[5]]);
+    let channels = u16::from_be_bytes([data[12], data[13]]) as usize;
+    let height = u32::from_be_bytes([data[14], data[15], data[16], data[17]]) as usize;
+    let width = u32::from_be_bytes([data[18], data[19], data[20], data[21]]) as usize;
+    let depth = u16::from_be_bytes([data[22], data[23]]);
+
+    if depth != 8 || width == 0 || height == 0 {
+        return Err(format!("未対応のPSD (depth={}, {}x{})", depth, width, height));
+    }
+
+    let len_size = if version == 2 { 8 } else { 4 };
+    let mut offset = 26;
+
+    // Color Mode Data
+    if offset + 4 > data.len() { return Err("PSD解析エラー".to_string()); }
+    let cm_len = u32::from_be_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]]) as usize;
+    offset += 4 + cm_len;
+
+    // Image Resources
+    if offset + 4 > data.len() { return Err("PSD解析エラー".to_string()); }
+    let ir_len = u32::from_be_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]]) as usize;
+    offset += 4 + ir_len;
+
+    // Layer and Mask Information
+    if offset + len_size > data.len() { return Err("PSD解析エラー".to_string()); }
+    let lm_len = if version == 2 {
+        u64::from_be_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3],
+                           data[offset+4], data[offset+5], data[offset+6], data[offset+7]]) as usize
+    } else {
+        u32::from_be_bytes([data[offset], data[offset+1], data[offset+2], data[offset+3]]) as usize
+    };
+    offset += len_size + lm_len;
+
+    // Image Data Section
+    if offset + 2 > data.len() { return Err("PSD解析エラー".to_string()); }
+    let compression = u16::from_be_bytes([data[offset], data[offset+1]]);
+    offset += 2;
+
+    let ch_count = channels.min(4);
+    let pixels = width * height;
+
+    let channel_data: Vec<Vec<u8>> = if compression == 0 {
+        let mut chs = Vec::new();
+        for _c in 0..ch_count {
+            if offset + pixels > data.len() { return Err("PSD解析エラー".to_string()); }
+            chs.push(data[offset..offset + pixels].to_vec());
+            offset += pixels;
+        }
+        for _ in ch_count..channels { offset += pixels; }
+        chs
+    } else if compression == 1 {
+        let row_count = height * channels;
+        if offset + row_count * 2 > data.len() { return Err("PSD解析エラー".to_string()); }
+        let mut byte_counts = Vec::with_capacity(row_count);
+        for i in 0..row_count {
+            let pos = offset + i * 2;
+            byte_counts.push(u16::from_be_bytes([data[pos], data[pos+1]]) as usize);
+        }
+        offset += row_count * 2;
+
+        let mut chs: Vec<Vec<u8>> = Vec::new();
+        for c in 0..channels {
+            let mut ch_buf = Vec::with_capacity(pixels);
+            for row in 0..height {
+                let bc = byte_counts[c * height + row];
+                if offset + bc > data.len() { return Err("PSD解析エラー".to_string()); }
+                decode_packbits(&data[offset..offset + bc], &mut ch_buf, width);
+                offset += bc;
+            }
+            if c < ch_count { chs.push(ch_buf); }
+        }
+        chs
+    } else {
+        return Err(format!("未対応の圧縮形式: {}", compression));
+    };
+
+    let mut rgba = vec![255u8; pixels * 4];
+    if ch_count >= 3 {
+        for i in 0..pixels {
+            rgba[i * 4]     = channel_data[0].get(i).copied().unwrap_or(0);
+            rgba[i * 4 + 1] = channel_data[1].get(i).copied().unwrap_or(0);
+            rgba[i * 4 + 2] = channel_data[2].get(i).copied().unwrap_or(0);
+            if ch_count >= 4 {
+                rgba[i * 4 + 3] = channel_data[3].get(i).copied().unwrap_or(255);
+            }
+        }
+    } else if ch_count == 1 {
+        for i in 0..pixels {
+            let v = channel_data[0].get(i).copied().unwrap_or(0);
+            rgba[i * 4] = v;
+            rgba[i * 4 + 1] = v;
+            rgba[i * 4 + 2] = v;
+        }
+    }
+
+    Ok(image::DynamicImage::ImageRgba8(
+        image::RgbaImage::from_raw(width as u32, height as u32, rgba)
+            .unwrap_or_else(|| image::RgbaImage::new(1, 1))
+    ))
+}
+
+fn decode_packbits(src: &[u8], dst: &mut Vec<u8>, expected: usize) {
+    let mut i = 0;
+    let mut written = 0;
+    while i < src.len() && written < expected {
+        let n = src[i] as i8;
+        i += 1;
+        if n >= 0 {
+            let count = (n as usize) + 1;
+            let end = (i + count).min(src.len());
+            let take = count.min(expected - written);
+            dst.extend_from_slice(&src[i..i + take]);
+            written += take;
+            i = end;
+        } else if n > -128 {
+            let count = (-n as usize) + 1;
+            if i < src.len() {
+                let val = src[i];
+                i += 1;
+                let take = count.min(expected - written);
+                dst.extend(std::iter::repeat(val).take(take));
+                written += take;
+            }
+        }
+        // n == -128: no-op
+    }
+}
+
+/// 画像をリサイズしてディスクキャッシュに保存、ファイルパスを返す
+fn encode_preview_to_disk(
+    img: &image::DynamicImage,
+    max_size: u32,
+    cache_path: &Path,
+    cache_key: &str,
+) -> serde_json::Value {
+    let (ow, oh) = (img.width(), img.height());
+    let resized = if ow > max_size || oh > max_size {
+        img.resize(max_size, max_size, image::imageops::FilterType::CatmullRom)
+    } else {
+        img.clone()
+    };
+
+    // JPEG品質92でディスクに保存
+    let jpeg_encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+        match fs::File::create(cache_path) {
+            Ok(f) => std::io::BufWriter::new(f),
+            Err(e) => return serde_json::json!({ "success": false, "error": format!("キャッシュ書き込みエラー: {}", e) }),
+        },
+        92,
+    );
+    if resized.write_with_encoder(jpeg_encoder).is_err() {
+        return serde_json::json!({ "success": false, "error": "JPEG変換に失敗しました" });
+    }
+
+    let cache_path_str = cache_path.to_string_lossy().to_string();
+
+    // メモリキャッシュに登録
+    if let Ok(mut cache) = preview_cache().lock() {
+        cache.insert(cache_key.to_string(), cache_path_str.clone());
+    }
+
+    serde_json::json!({
+        "success": true,
+        "filePath": cache_path_str,
+        "originalWidth": ow,
+        "originalHeight": oh,
+    })
+}
+
+#[tauri::command]
+async fn show_open_image_folder_dialog(app: tauri::AppHandle) -> serde_json::Value {
+    use tauri_plugin_dialog::DialogExt;
+    let result = app.dialog().file().set_title("画像フォルダを選択").blocking_pick_folder();
+    match result {
+        Some(path) => serde_json::json!({ "success": true, "folderPath": path.to_string() }),
+        None => serde_json::json!({ "success": false, "canceled": true }),
+    }
+}
+
+// ========================================
+// 校正結果JSONファイル保存・読み込み
+// ========================================
+
+#[tauri::command]
+async fn show_save_json_dialog(
+    default_name: Option<String>,
+    app: tauri::AppHandle,
+) -> serde_json::Value {
+    use tauri_plugin_dialog::DialogExt;
+    let default = default_name.unwrap_or_else(|| "校正結果.json".to_string());
+    let result = app
+        .dialog()
+        .file()
+        .set_file_name(&default)
+        .add_filter("JSON files", &["json"])
+        .blocking_save_file();
+    match result {
+        Some(path) => serde_json::json!({ "success": true, "filePath": path.to_string() }),
+        None => serde_json::json!({ "success": false, "canceled": true }),
+    }
+}
+
+#[tauri::command]
+async fn open_and_read_json_dialog(app: tauri::AppHandle) -> serde_json::Value {
+    use tauri_plugin_dialog::DialogExt;
+    let mut builder = app
+        .dialog()
+        .file()
+        .set_title("校正結果JSONを開く")
+        .add_filter("JSON files", &["json"]);
+
+    // COMIC-Bridgeと共通のデフォルトパス
+    let default_dir = Path::new("G:/共有ドライブ/CLLENN/編集部フォルダ/編集企画部/写植・校正用テキストログ/テキスト抽出");
+    if default_dir.is_dir() {
+        builder = builder.set_directory(default_dir);
+    }
+
+    let result = builder
+        .blocking_pick_file();
+    match result {
+        Some(file_path) => {
+            let path_str = file_path.to_string();
+            match fs::read_to_string(&path_str) {
+                Ok(content) => serde_json::json!({
+                    "success": true,
+                    "filePath": path_str,
+                    "content": content
+                }),
+                Err(e) => serde_json::json!({
+                    "success": false,
+                    "error": format!("読み込みエラー: {}", e)
+                }),
+            }
+        }
+        None => serde_json::json!({ "success": false, "canceled": true }),
+    }
+}
+
+// ========================================
 // エントリーポイント
 // ========================================
 
@@ -784,6 +1310,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -820,6 +1347,13 @@ pub fn run() {
             launch_comic_bridge,
             get_comicpot_handoff,
             respond_to_update,
+            list_image_files,
+            list_image_files_from_paths,
+            load_image_preview,
+            show_open_image_folder_dialog,
+            read_dropped_txt_files,
+            open_and_read_json_dialog,
+            show_save_json_dialog,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

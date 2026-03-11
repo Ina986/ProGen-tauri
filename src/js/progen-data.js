@@ -749,35 +749,47 @@ function dismissTxtGuide() {
 }
 
 
-// ドロップゾーン: ファイルをドロップでセリフTXT読み込み
-function handleTxtDrop(e, loadFn) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.currentTarget.classList.remove('dragover');
-    const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.txt'));
-    if (files.length === 0) return;
-    // loadManuscriptTxt / addProofreadingTxt が input.files を期待するので擬似inputを作る
-    const fakeInput = { files: files, value: '' };
-    loadFn(fakeInput);
-}
-
-function handleTxtDragOver(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.currentTarget.classList.add('dragover');
-}
-
-function handleTxtDragLeave(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    e.currentTarget.classList.remove('dragover');
-}
-
+// ドロップゾーン: Tauri D&D イベント経由でTXTファイル読み込み
+// dragDropEnabled: true なので HTML5 drop イベントは発火しない
+// 要素の可視性でターゲットを判定（位置情報は使わない）
 function setupDropZone(element, loadFn) {
-    element.addEventListener('dragover', handleTxtDragOver);
-    element.addEventListener('dragenter', handleTxtDragOver);
-    element.addEventListener('dragleave', handleTxtDragLeave);
-    element.addEventListener('drop', (e) => handleTxtDrop(e, loadFn));
+    // ドラッグ中のビジュアルフィードバック
+    document.addEventListener('tauri-drag-enter', () => {
+        if (_isElementVisible(element)) element.classList.add('dragover');
+    });
+    document.addEventListener('tauri-drag-leave', () => {
+        element.classList.remove('dragover');
+    });
+
+    // Tauri D&D ハンドラを登録
+    window._registerDragDropHandler((paths) => {
+        if (!_isElementVisible(element)) return false;
+
+        element.classList.remove('dragover');
+
+        // TXTファイルをパスから読み込み
+        const txtPaths = paths.filter(p => p.toLowerCase().endsWith('.txt'));
+        if (txtPaths.length === 0) return false;
+
+        window.electronAPI.readDroppedTxtFiles(txtPaths).then(result => {
+            if (!result.success || result.files.length === 0) return;
+            const fakeFiles = result.files.map(f => {
+                const blob = new Blob([f.content], { type: 'text/plain' });
+                const file = new File([blob], f.name, { type: 'text/plain' });
+                return file;
+            });
+            const fakeInput = { files: fakeFiles, value: '' };
+            loadFn(fakeInput);
+        });
+        return true;
+    });
+}
+
+function _isElementVisible(el) {
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    return el.offsetParent !== null || el.style.position === 'fixed';
 }
 
 // ES Module exports

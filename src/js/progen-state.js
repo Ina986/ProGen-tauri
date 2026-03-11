@@ -76,4 +76,7 @@ export const state = {
     txtFolderBasePath: '',
     currentSimpleData: [],
     currentVariationData: {},
+
+    // COMIC-POTで校正JSON読み込み時の作品タイトル（自動選択用）
+    pendingWorkTitle: '',
 };
