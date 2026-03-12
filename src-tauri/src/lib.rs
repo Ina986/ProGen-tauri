@@ -1304,6 +1304,36 @@ async fn open_and_read_json_dialog(app: tauri::AppHandle) -> serde_json::Value {
 // エントリーポイント
 // ========================================
 
+/// WebView2のキャッシュをバージョンアップ時にクリアする。
+/// 自動更新後にWebView2が古いJSバイトコードを返す問題を防止。
+fn clear_webview2_cache_on_version_change(app_handle: &tauri::AppHandle) {
+    let app_version = app_handle.package_info().version.to_string();
+    let data_dir = match app_handle.path().app_local_data_dir() {
+        Ok(dir) => dir,
+        Err(_) => return,
+    };
+
+    let version_file = data_dir.join(".cache_version");
+
+    // 前回のバージョンと比較
+    let prev_version = fs::read_to_string(&version_file).unwrap_or_default();
+    if prev_version.trim() == app_version {
+        return; // 同一バージョン → キャッシュクリア不要
+    }
+
+    // バージョンが変わった → WebView2キャッシュを削除
+    let webview_dir = data_dir.join("EBWebView").join("Default");
+    for cache_dir in &["Cache", "Code Cache"] {
+        let target = webview_dir.join(cache_dir);
+        if target.exists() {
+            let _ = fs::remove_dir_all(&target);
+        }
+    }
+
+    // 現在のバージョンを記録
+    let _ = fs::write(&version_file, &app_version);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let initial_map = scan_master_json_folder();
@@ -1356,6 +1386,9 @@ pub fn run() {
             show_save_json_dialog,
         ])
         .setup(|app| {
+            // WebView2キャッシュクリア（バージョンアップ時）
+            clear_webview2_cache_on_version_change(app.handle());
+
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 check_for_updates(handle).await;
