@@ -747,12 +747,14 @@ async fn check_for_updates(app: tauri::AppHandle) {
         *response = None;
     }
 
-    // 最大60秒ポーリング
+    // 最大60秒ポーリング（spawn_blockingでasyncランタイムをブロックしない）
     let accepted = {
         let state = app.state::<UpdateState>();
         let mut accepted = false;
         for _ in 0..600 {
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            let _ = tauri::async_runtime::spawn_blocking(|| {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }).await;
             let response = state.response.lock().unwrap();
             if let Some(val) = *response {
                 accepted = val;
