@@ -72,9 +72,9 @@ struct AppState {
     master_rule_file_map: Mutex<HashMap<String, LabelInfo>>,
 }
 
-// アップデート応答状態
-struct UpdateState {
-    response: Mutex<Option<bool>>,
+// アップデート: 保留中の更新オブジェクトを保持
+struct PendingUpdate {
+    update: Mutex<Option<tauri_plugin_updater::Update>>,
 }
 
 // ========================================
@@ -688,9 +688,45 @@ fn launch_comic_bridge(json_file_path: String) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn respond_to_update(accepted: bool, state: tauri::State<'_, UpdateState>) {
-    let mut response = state.response.lock().unwrap();
-    *response = Some(accepted);
+async fn respond_to_update(accepted: bool, app: tauri::AppHandle) {
+    if !accepted {
+        // 「後で」を選択 → 保留中の更新をクリア
+        let pending = app.state::<PendingUpdate>();
+        let mut update = pending.update.lock().unwrap();
+        *update = None;
+        return;
+    }
+
+    // 保留中の更新オブジェクトを取り出す
+    let update = {
+        let pending = app.state::<PendingUpdate>();
+        let mut guard = pending.update.lock().unwrap();
+        guard.take()
+    };
+
+    let update = match update {
+        Some(u) => u,
+        None => {
+            eprintln!("更新オブジェクトが見つかりません");
+            let _ = app.emit("update-error", "更新情報が見つかりません。アプリを再起動してください。");
+            return;
+        }
+    };
+
+    // ダウンロード開始を通知
+    println!("更新のダウンロードを開始します...");
+    let _ = app.emit("update-downloading", serde_json::json!({}));
+
+    match update.download_and_install(|_, _| {}, || {}).await {
+        Ok(()) => {
+            println!("更新のインストールが完了しました。再起動します。");
+            app.restart();
+        }
+        Err(e) => {
+            eprintln!("更新のインストールに失敗しました: {}", e);
+            let _ = app.emit("update-error", e.to_string());
+        }
+    }
 }
 
 #[tauri::command]
@@ -734,53 +770,19 @@ async fn check_for_updates(app: tauri::AppHandle) {
     let new_version = update.version.clone();
     println!("新バージョンが見つかりました: {}", new_version);
 
+    // 更新オブジェクトをstateに保存（respond_to_updateコマンドで使用）
+    {
+        let pending = app.state::<PendingUpdate>();
+        let mut guard = pending.update.lock().unwrap();
+        *guard = Some(update);
+    }
+
     // フロントエンドに更新情報を送信
     let _ = app.emit("update-available", serde_json::json!({
         "currentVersion": current_version,
         "newVersion": new_version,
     }));
-
-    // フロントエンドからの応答を待つ (グローバル状態経由)
-    {
-        let state = app.state::<UpdateState>();
-        let mut response = state.response.lock().unwrap();
-        *response = None;
-    }
-
-    // 最大60秒ポーリング（spawn_blockingでasyncランタイムをブロックしない）
-    let accepted = {
-        let state = app.state::<UpdateState>();
-        let mut accepted = false;
-        for _ in 0..600 {
-            let _ = tauri::async_runtime::spawn_blocking(|| {
-                std::thread::sleep(std::time::Duration::from_millis(100));
-            }).await;
-            let response = state.response.lock().unwrap();
-            if let Some(val) = *response {
-                accepted = val;
-                break;
-            }
-        }
-        accepted
-    };
-
-    if !accepted {
-        return;
-    }
-
-    // ダウンロード開始を通知
-    let _ = app.emit("update-downloading", serde_json::json!({}));
-
-    match update.download_and_install(|_, _| {}, || {}).await {
-        Ok(()) => {
-            println!("更新のインストールが完了しました。再起動します。");
-            app.restart();
-        }
-        Err(e) => {
-            eprintln!("更新のインストールに失敗しました: {}", e);
-            let _ = app.emit("update-error", e.to_string());
-        }
-    }
+    // ダウンロード・インストールはrespond_to_updateコマンドで実行される
 }
 
 // ========================================
@@ -1356,8 +1358,8 @@ pub fn run() {
         .manage(AppState {
             master_rule_file_map: Mutex::new(initial_map),
         })
-        .manage(UpdateState {
-            response: Mutex::new(None),
+        .manage(PendingUpdate {
+            update: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             get_json_folder_path,
