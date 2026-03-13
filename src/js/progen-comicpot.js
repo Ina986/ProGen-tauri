@@ -214,7 +214,6 @@ async function cpLoadFromHandoff(data) {
     // 抽出プロンプト側のUI更新
     updateNonJoyoDetection();
     renderTxtFileList();
-    updateOutput();
     const totalSize = state.manuscriptTxtFiles.reduce((sum, f) => sum + f.size, 0);
     const statusEl = document.getElementById('txtUploadStatus');
     if (statusEl) statusEl.textContent = state.manuscriptTxtFiles.length + 'ファイル (' + formatFileSize(totalSize) + ')';

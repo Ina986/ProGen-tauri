@@ -421,7 +421,6 @@ async function loadSelectedTxtFiles() {
             state.manuscriptTxtFiles = state.manuscriptTxtFiles.concat(fileInfos);
             updateNonJoyoDetection();
             renderTxtFileList();
-            updateOutput();
             // ステータス更新
             const totalSize = state.manuscriptTxtFiles.reduce((sum, f) => sum + f.size, 0);
             document.getElementById('txtUploadStatus').textContent = `${state.manuscriptTxtFiles.length}ファイル (${formatFileSize(totalSize)})`;
