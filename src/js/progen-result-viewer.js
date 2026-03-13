@@ -150,14 +150,14 @@ function extractCalibrationInfoFromPath(filePath, fileInfos) {
 // 校正データを保存（フォルダブラウザを表示）
 async function saveCalibrationData() {
     if (!window.electronAPI || !window.electronAPI.isElectron) {
-        alert('この機能はElectronアプリでのみ使用できます');
+        showToast('この機能はElectronアプリでのみ使用できます', 'error');
         return;
     }
 
     // 結果データを事前チェック
     const items = getPickedResultData();
     if (items.length === 0) {
-        alert('保存するデータがありません。先に結果を貼り付けてください。');
+        showToast('保存するデータがありません。先に結果を貼り付けてください。', 'warning');
         return;
     }
 
@@ -425,10 +425,10 @@ async function launchComicBridgeFromSave() {
         if (result.success) {
             closeCalibrationSaveSuccessModal();
         } else {
-            alert(result.error || 'COMIC-Bridgeの起動に失敗しました');
+            showToast(result.error || 'COMIC-Bridgeの起動に失敗しました', 'error');
         }
     } catch (error) {
-        alert('COMIC-Bridgeの起動中にエラーが発生しました: ' + error.message);
+        showToast('COMIC-Bridgeの起動中にエラーが発生しました: ' + error.message, 'error');
     } finally {
         btn.disabled = false;
         btn.innerHTML = originalText;
@@ -465,14 +465,14 @@ function closeCalibrationNewWorkModal() {
 function registerCalibrationNewWork() {
     const title = document.getElementById('calibrationNewWorkTitle').value.trim();
     if (!title) {
-        alert('作品名を入力してください');
+        showToast('作品名を入力してください', 'warning');
         return;
     }
 
     // ファイル名に使えない文字をサニタイズ
     const sanitizedName = title.replace(/[<>:"/\\|?*]/g, '_').trim();
     if (!sanitizedName) {
-        alert('有効な作品名を入力してください');
+        showToast('有効な作品名を入力してください', 'warning');
         return;
     }
 
@@ -487,7 +487,7 @@ function registerCalibrationNewWork() {
 // 校正データ保存フォルダブラウザ: フッターの「新規作品を登録」ボタン
 function startCalibrationNewWorkFromBrowser() {
     if (!calibrationExpandedLabel.name) {
-        alert('先にレーベルフォルダを展開してください');
+        showToast('先にレーベルフォルダを展開してください', 'warning');
         return;
     }
     showCalibrationNewWorkForm(calibrationExpandedLabel.path, calibrationExpandedLabel.name);
@@ -720,7 +720,7 @@ function parseAndGoToViewer() {
     const simpleText = (pasteTextByType.simple || '').trim();
 
     if (!variationText && !simpleText) {
-        alert('結果を貼り付けてください');
+        showToast('結果を貼り付けてください', 'warning');
         return;
     }
 
@@ -746,7 +746,7 @@ function parseAndGoToViewer() {
     }
 
     if (!parsedTab) {
-        alert('解析できるデータがありません');
+        showToast('解析できるデータがありません', 'warning');
         return;
     }
 
@@ -1163,7 +1163,7 @@ function switchSimpleDisplayMode(mode) {
 function parseAndDisplayResult() {
     const text = document.getElementById('resultPasteArea').value.trim();
     if (!text) {
-        alert('結果を貼り付けてください');
+        showToast('結果を貼り付けてください', 'warning');
         return;
     }
 
@@ -1172,7 +1172,7 @@ function parseAndDisplayResult() {
         if (pasteTargetType === 'variation') {
             const data = parseVariationCSV(text);
             if (data.length === 0) {
-                alert('解析できるデータがありません');
+                showToast('解析できるデータがありません', 'warning');
                 return;
             }
             const grouped = groupByCategory(data);
@@ -1183,7 +1183,7 @@ function parseAndDisplayResult() {
         } else {
             const data = parseSimpleCSV(text);
             if (data.length === 0) {
-                alert('解析できるデータがありません');
+                showToast('解析できるデータがありません', 'warning');
                 return;
             }
             state.currentSimpleData = data;
@@ -1201,7 +1201,7 @@ function parseAndDisplayResult() {
         // 提案チェック: カテゴリ,ページ,セリフ,指摘内容
         const data = parseVariationCSV(text);
         if (data.length === 0) {
-            alert('解析できるデータがありません');
+            showToast('解析できるデータがありません', 'warning');
             return;
         }
         const grouped = groupByCategory(data);
@@ -1212,7 +1212,7 @@ function parseAndDisplayResult() {
         // 正誤チェック: ページ,種別,セリフ,指摘内容
         const data = parseSimpleCSV(text);
         if (data.length === 0) {
-            alert('解析できるデータがありません');
+            showToast('解析できるデータがありません', 'warning');
             return;
         }
         state.currentSimpleData = data;

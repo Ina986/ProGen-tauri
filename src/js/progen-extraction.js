@@ -14,7 +14,7 @@ function openLabelSelectModal(mode) {
     let currentLabel = '';
     if (mode === 'extraction') {
         currentLabel = document.getElementById('labelSelector').value;
-    } else if (mode === 'proofreading') {
+    } else if (mode === 'proofreading' || mode === 'comicpot-proofreading') {
         currentLabel = document.getElementById('proofreadingLabelSelect').value;
     } else if (mode === 'landing') {
         currentLabel = document.getElementById('landingLabelSelect').value;
@@ -32,6 +32,7 @@ function openLabelSelectModal(mode) {
 function closeLabelSelectModal() {
     document.getElementById('labelSelectModal').style.display = 'none';
     state.pendingNewCreationMode = null;
+    state._cpPendingProofreadingTransition = null;
 }
 
 // ポップアップからレーベルを選択
@@ -61,6 +62,17 @@ async function selectLabelFromPopup(label) {
         textEl.classList.remove('unselected');
         closeLabelSelectModal();
         await changeProofreadingLabel();
+    } else if (currentLabelSelectMode === 'comicpot-proofreading') {
+        // テキストエディタ → 校正プロンプト遷移時のレーベル選択
+        document.getElementById('proofreadingLabelSelect').value = label;
+        const textEl = document.getElementById('proofreadingLabelSelectorText');
+        textEl.textContent = label;
+        textEl.classList.remove('unselected');
+        // コールバックを退避してからモーダルを閉じる（closeでクリアされるため）
+        const fn = state._cpPendingProofreadingTransition;
+        closeLabelSelectModal();
+        await changeProofreadingLabel();
+        if (fn) fn();
     } else if (currentLabelSelectMode === 'landing') {
         // ランディング画面 → レーベル選択後に即ページ遷移
         document.getElementById('landingLabelSelect').value = label;
@@ -812,7 +824,7 @@ function switchFromEditModal(category) {
     const editIndex = document.getElementById('edit_index').value;
     if (editIndex !== '-1') {
         // 編集モードの場合は選択を元に戻す
-        alert('既存ルールのカテゴリ変更はできません');
+        showToast('既存ルールのカテゴリ変更はできません', 'warning');
         document.getElementById('edit_category').value = 'basic';
         return;
     }
@@ -1005,14 +1017,14 @@ function renderSpecSheetTable() {
 
 async function exportSpecSheetPDF() {
     if (!window.electronAPI || !window.electronAPI.printToPDF) {
-        alert('PDF出力はElectron環境でのみ使用できます');
+        showToast('PDF出力はElectron環境でのみ使用できます', 'error');
         return;
     }
 
     // 現在の仕様書テーブルHTMLを取得
     const tableHtml = document.getElementById('specSheetBody').innerHTML;
     if (!tableHtml) {
-        alert('仕様書の内容がありません。先にレーベルを選択してください。');
+        showToast('仕様書の内容がありません。先にレーベルを選択してください。', 'warning');
         return;
     }
 
@@ -1043,9 +1055,9 @@ th, td { border: 1px solid #d1d5db; }
 
     const result = await window.electronAPI.printToPDF(fullHtml);
     if (result.success) {
-        alert('PDFを保存しました: ' + result.filePath);
+        showToast('PDFを保存しました: ' + result.filePath, 'success');
     } else if (!result.canceled) {
-        alert('PDF出力に失敗しました: ' + (result.error || ''));
+        showToast('PDF出力に失敗しました: ' + (result.error || ''), 'error');
     }
 }
 
@@ -1077,7 +1089,7 @@ function addNewRule() {
     const dst = document.getElementById('new_replace').value.trim();
     const note = document.getElementById('new_note').value.trim();
 
-    if(!src || !dst) { alert('言葉を入力してください'); return; }
+    if(!src || !dst) { showToast('言葉を入力してください', 'warning'); return; }
 
     // 先頭に追加して目立たせる
     const newRule = { src, dst, note, active: true, category };
@@ -1146,13 +1158,13 @@ function saveEdit() {
     const difficultMode = document.getElementById('edit_difficult_mode').value;
 
     if (!src.trim()) {
-        alert(category === 'character' ? '名前を入力してください' : '修正前の言葉を入力してください');
+        showToast(category === 'character' ? '名前を入力してください' : '修正前の言葉を入力してください', 'warning');
         return;
     }
 
     // 人物名以外はdst必須（人物名はルビなので空でもOKの場合がある）
     if (!dst.trim() && category !== 'character') {
-        alert('修正後の言葉を入力してください');
+        showToast('修正後の言葉を入力してください', 'warning');
         return;
     }
 
@@ -1238,7 +1250,7 @@ function addSymbolRule() {
     const dst = document.getElementById('new_symbol_dst').value; // スペースを許容するためtrimしない
     const note = document.getElementById('new_symbol_note').value.trim();
 
-    if(!src || dst === '') { alert('変換前と変換後を入力してください'); return; }
+    if(!src || dst === '') { showToast('変換前と変換後を入力してください', 'warning'); return; }
 
     state.symbolRules.unshift({ src, dst, note, active: true });
 
@@ -1271,7 +1283,7 @@ function saveSymbolEdit() {
     const note = document.getElementById('symbol_edit_note').value.trim();
 
     if (!src || dst === '') {
-        alert('変換前と変換後を入力してください');
+        showToast('変換前と変換後を入力してください', 'warning');
         return;
     }
 

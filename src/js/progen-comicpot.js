@@ -15,6 +15,7 @@ let cpChunks = [];
 let cpSelectedChunkIndex = null;
 let cpFileName = '無題';
 let cpFilePath = ''; // 保存先ファイルパス（上書き用）
+let cpSavedText = ''; // 最後に保存/ロードした時点のテキスト（dirty判定用）
 let cpIsEditing = false;
 let cpComicPotHeader = '';
 let cpDraggedChunkIndex = null;
@@ -36,8 +37,8 @@ let cpPanelWidthPercent = 50;
 let cpIsResizing = false;
 
 // ===== COMIC-POT DOM要素（遅延取得） =====
-let cpEditTextArea, cpSelectModeEl, cpMoveButtonsEl, cpMoveCounterEl;
-let cpBtnMoveUp, cpBtnMoveDown, cpBtnCopy, cpBtnToggleMode;
+let cpEditTextArea, cpSelectModeEl;
+let cpBtnCopy, cpBtnToggleMode;
 let cpBtnDeleteMark, cpBtnRuby, cpBtnConvert, cpBtnSave, cpBtnSaveAs;
 let cpCopyBtnFloat, cpStatusInfo, cpFileNameDisplay;
 let cpContextBar, cpContextModeLabel, cpContextModeHint;
@@ -48,10 +49,6 @@ let cpBtnTogglePanel, cpPanelSep, cpPanelTabVariation, cpPanelTabSimple, cpPanel
 function cpInitDomRefs() {
     cpEditTextArea = document.getElementById('cpEditTextArea');
     cpSelectModeEl = document.getElementById('cpSelectMode');
-    cpMoveButtonsEl = document.getElementById('cpMoveButtons');
-    cpMoveCounterEl = document.getElementById('cpMoveCounter');
-    cpBtnMoveUp = document.getElementById('cpBtnMoveUp');
-    cpBtnMoveDown = document.getElementById('cpBtnMoveDown');
     cpBtnCopy = document.getElementById('cpBtnCopy');
     cpBtnToggleMode = document.getElementById('cpBtnToggleMode');
     cpBtnDeleteMark = document.getElementById('cpBtnDeleteMark');
@@ -108,7 +105,7 @@ function goToComicPotEditor(source, options) {
     const cpBtnLoadSerif = document.getElementById('cpBtnLoadSerif');
     if (cpSourcePage === 'proofreading' && state.proofreadingFiles.length > 0) {
         cpBtnLoadSerif.style.display = '';
-    } else if (cpSourcePage === 'extraction' && state.manuscriptTxtFiles.length > 0) {
+    } else if ((cpSourcePage === 'extraction' || cpSourcePage === 'landing') && state.manuscriptTxtFiles.length > 0) {
         cpBtnLoadSerif.style.display = '';
     } else {
         cpBtnLoadSerif.style.display = 'none';
@@ -124,6 +121,11 @@ function goToComicPotEditor(source, options) {
     // ランディングからの場合はビューアータブで開く
     if (options && options.showViewer) {
         cpSwitchPanelTab('viewer');
+    }
+
+    // 校正プロンプトからの遷移でテキストが1つだけなら自動読み込み
+    if (cpSourcePage === 'proofreading' && state.proofreadingFiles.length === 1) {
+        cpApplySerifFile(state.proofreadingFiles[0]);
     }
 }
 
@@ -145,6 +147,7 @@ function cpApplySerifFile(file) {
         if (!confirm('現在のテキストを上書きしますか？')) return;
     }
     cpText = file.content;
+    cpSavedText = cpText;
     cpFilePath = '';
     cpFileName = file.name;
     cpComicPotHeader = cpExtractComicPotHeader(cpText);
@@ -163,6 +166,7 @@ function cpLoadAllSerifText() {
     }
     const combined = files.map(f => f.content).join('\n\n');
     cpText = combined;
+    cpSavedText = cpText;
     cpFilePath = '';
     cpFileName = files[0].name + ' 他' + (files.length - 1) + '件';
     cpComicPotHeader = cpExtractComicPotHeader(cpText);
@@ -241,6 +245,7 @@ async function cpLoadFromHandoff(data) {
 
     // COMIC-POTエディタに読み込み＆遷移（従来動作）
     cpText = content;
+    cpSavedText = cpText;
     cpFilePath = data.filePath;
     cpFileName = data.fileName;
     cpComicPotHeader = cpExtractComicPotHeader(cpText);
@@ -275,6 +280,16 @@ function goBackFromComicPotEditor() {
             proofreadingPage.classList.add('page-transition-up');
             setTimeout(() => { proofreadingPage.classList.remove('page-transition-up'); }, 350);
         }, 200);
+    } else if (cpSourcePage === 'landing') {
+        const landingScreen = document.getElementById('landingScreen');
+        editorPage.classList.add('page-transition-out-down');
+        setTimeout(() => {
+            editorPage.style.display = 'none';
+            editorPage.classList.remove('page-transition-out-down');
+            landingScreen.style.display = 'flex';
+            landingScreen.classList.add('page-transition-up');
+            setTimeout(() => { landingScreen.classList.remove('page-transition-up'); }, 350);
+        }, 200);
     } else {
         const mainWrapper = document.getElementById('mainWrapper');
         editorPage.classList.add('page-transition-out-down');
@@ -287,6 +302,170 @@ function goBackFromComicPotEditor() {
             updateHeaderSaveButtons();
         }, 200);
     }
+}
+
+// ===== 保存確認モーダル =====
+let _cpSaveConfirmResolve = null;
+
+function cpShowSaveConfirm() {
+    return new Promise((resolve) => {
+        _cpSaveConfirmResolve = resolve;
+        const modal = document.getElementById('cpSaveConfirmModal');
+        const filenameEl = document.getElementById('cpSaveConfirmFilename');
+        const overwriteBtn = document.getElementById('cpSaveConfirmOverwrite');
+
+        // ファイルパスがある場合はファイル名を表示＆上書きボタンを有効化
+        if (cpFilePath) {
+            filenameEl.textContent = cpFileName || cpFilePath;
+            filenameEl.classList.add('show');
+            overwriteBtn.style.display = '';
+        } else {
+            filenameEl.classList.remove('show');
+            overwriteBtn.style.display = 'none';
+        }
+
+        modal.classList.add('show');
+    });
+}
+
+function cpCloseSaveConfirm() {
+    const modal = document.getElementById('cpSaveConfirmModal');
+    modal.classList.remove('show');
+    if (_cpSaveConfirmResolve) {
+        _cpSaveConfirmResolve('cancel');
+        _cpSaveConfirmResolve = null;
+    }
+}
+
+async function cpSaveConfirmAction(action) {
+    const modal = document.getElementById('cpSaveConfirmModal');
+    modal.classList.remove('show');
+
+    if (action === 'overwrite' && cpFilePath) {
+        const result = await window.electronAPI.writeTextFile(cpFilePath, cpText);
+        if (result.success) {
+            cpSavedText = cpText;
+            cpShowNotify('保存しました: ' + cpFileName, 'var(--sage)');
+        } else {
+            cpShowNotify('保存に失敗しました', '#ef4444');
+            if (_cpSaveConfirmResolve) { _cpSaveConfirmResolve('cancel'); _cpSaveConfirmResolve = null; }
+            return;
+        }
+    } else if (action === 'saveas') {
+        const dialogResult = await window.electronAPI.showSaveTextDialog(cpFileName || '無題.txt');
+        if (!dialogResult.success) {
+            if (_cpSaveConfirmResolve) { _cpSaveConfirmResolve('cancel'); _cpSaveConfirmResolve = null; }
+            return;
+        }
+        const saveResult = await window.electronAPI.writeTextFile(dialogResult.filePath, cpText);
+        if (saveResult.success) {
+            cpFilePath = dialogResult.filePath;
+            cpSavedText = cpText;
+            const parts = dialogResult.filePath.replace(/\\/g, '/').split('/');
+            cpFileName = parts[parts.length - 1];
+            cpFileNameDisplay.textContent = cpFileName;
+            cpShowNotify('保存しました: ' + cpFileName, 'var(--sage)');
+        } else {
+            cpShowNotify('保存に失敗しました', '#ef4444');
+            if (_cpSaveConfirmResolve) { _cpSaveConfirmResolve('cancel'); _cpSaveConfirmResolve = null; }
+            return;
+        }
+    }
+    // action === 'skip' は何もしない
+
+    if (_cpSaveConfirmResolve) {
+        _cpSaveConfirmResolve(action);
+        _cpSaveConfirmResolve = null;
+    }
+}
+
+// ===== テキストエディタ → 校正プロンプトへ遷移（実際の遷移処理） =====
+async function _cpExecuteProofreadingTransition() {
+    // テキストを校正プロンプトに引き継ぐ
+    if (cpText && cpText.trim() !== '') {
+        const fileInfo = {
+            name: cpFileName || '無題.txt',
+            content: cpText,
+            size: new Blob([cpText]).size
+        };
+        state.proofreadingFiles = [fileInfo];
+        state.proofreadingContent = cpText;
+    }
+
+    // スプリットビューをリセット
+    cpHideResultPanel();
+    cpPanelCurrentTab = 'simple';
+    cpPanelWidthPercent = 50;
+
+    // 校正プロンプトページのレーベルUIをボタン選択モードで表示
+    const proofSelectorGroup = document.getElementById('proofreadingLabelSelectorGroup');
+    const proofDisplayGroup = document.getElementById('proofreadingLabelDisplayGroup');
+    if (proofSelectorGroup) proofSelectorGroup.style.display = 'flex';
+    if (proofDisplayGroup) proofDisplayGroup.style.display = 'none';
+
+    // テキストエディタで校正チェック結果JSONを開いていた場合、
+    // 親の親フォルダ名（=作品タイトル）からJSONフォルダ内の作品JSONを自動選択
+    if (state.pendingWorkTitle) {
+        const title = state.pendingWorkTitle;
+        state.pendingWorkTitle = '';
+        await _autoSelectWorkJson(title);
+    }
+
+    // 校正プロンプトページへ遷移
+    const editorPage = document.getElementById('comicPotEditorPage');
+    const proofreadingPage = document.getElementById('proofreadingPage');
+    editorPage.classList.add('page-transition-out-down');
+    setTimeout(() => {
+        editorPage.style.display = 'none';
+        editorPage.classList.remove('page-transition-out-down');
+        proofreadingPage.style.display = 'flex';
+        proofreadingPage.classList.add('page-transition-up');
+        setTimeout(() => { proofreadingPage.classList.remove('page-transition-up'); }, 350);
+    }, 200);
+
+    // 校正ページの状態を更新（_autoSelectWorkJson完了後にルール反映済み）
+    renderProofreadingFileList();
+    updateProofreadingPrompt();
+    updateProofreadingCheckItems();
+
+    // 常用外漢字を検出
+    if (state.proofreadingFiles.length > 0) {
+        const detectedLines = detectNonJoyoLinesWithPageInfo(state.proofreadingFiles);
+        state.proofreadingDetectedNonJoyoWords = detectedLines;
+        showNonJoyoResultPopup(detectedLines, true);
+    }
+}
+
+// ===== テキストエディタ → 校正プロンプトへ遷移 =====
+async function cpGoToProofreading() {
+    // 編集モード中ならテキストエリアの内容を反映
+    if (cpIsEditing) {
+        let content = cpEditTextArea.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        cpComicPotHeader = cpExtractComicPotHeader(content);
+        cpText = content;
+        cpChunks = cpParseTextToChunks(content);
+    }
+
+    // テキストに未保存の変更がある場合のみ保存確認モーダルを表示
+    if (cpText && cpText.trim() !== '' && cpText !== cpSavedText) {
+        const result = await cpShowSaveConfirm();
+        if (result === 'cancel') return;
+    }
+
+    // テキストエディタでJSONを開いている場合はレーベル選択不要（遷移先で自動選択される）
+    // それ以外でルールもレーベルも未設定の場合のみレーベル選択モーダルを表示
+    const hasPendingJson = !!state.pendingWorkTitle;
+    const proofLabel = document.getElementById('proofreadingLabelSelect');
+    const hasRules = state.currentProofRules && state.currentProofRules.length > 0;
+    const labelValue = proofLabel ? proofLabel.value : '';
+    const hasLabel = labelValue && labelValue !== 'default';
+    if (!hasPendingJson && !hasRules && !hasLabel) {
+        state._cpPendingProofreadingTransition = _cpExecuteProofreadingTransition;
+        openLabelSelectModal('comicpot-proofreading');
+        return;
+    }
+
+    _cpExecuteProofreadingTransition();
 }
 
 // JSONフォルダから作品タイトルに一致するJSONを自動選択（state更新のみ、画面遷移なし）
@@ -307,7 +486,7 @@ async function _autoSelectWorkJson(workTitle) {
                 i.name.replace(/\.json$/i, '') === workTitle
             );
             if (match) {
-                console.log('自動選択: ' + match.path);
+                // 自動選択
                 // JSONを読み込んでstate更新
                 const result = await window.electronAPI.readJsonFile(match.path);
                 if (!result.success) continue;
@@ -355,12 +534,20 @@ async function _autoSelectWorkJson(workTitle) {
                     };
                 }
 
-                // レーベル情報をランディングのhidden inputに設定
+                // レーベル情報を各ページのhidden inputに設定
                 const presetData = isNewFormat ? data.presetData : data;
                 const labelName = presetData.workInfo?.label || '';
                 if (labelName) {
                     const landingLabel = document.getElementById('landingLabelSelect');
                     if (landingLabel) landingLabel.value = labelName;
+
+                    const proofLabel = document.getElementById('proofreadingLabelSelect');
+                    const proofLabelText = document.getElementById('proofreadingLabelSelectorText');
+                    if (proofLabel) proofLabel.value = labelName;
+                    if (proofLabelText) {
+                        proofLabelText.textContent = labelName;
+                        proofLabelText.classList.remove('unselected');
+                    }
                 }
 
                 // JSON表示を更新
@@ -1319,10 +1506,9 @@ function cpRender() {
         cpEditTextArea.style.display = 'block';
         cpSelectModeEl.style.display = 'none';
         cpEditTextArea.value = cpText;
-        cpMoveButtonsEl.style.display = 'none';
     } else {
         cpEditTextArea.style.display = 'none';
-        cpSelectModeEl.style.display = 'block';
+        cpSelectModeEl.style.display = '';
         cpRenderSelectMode();
     }
 
@@ -1345,12 +1531,26 @@ function cpRenderSelectMode() {
     cpSelectModeEl.innerHTML = '';
 
     if (!cpText || cpChunks.length === 0) {
-        const ph = document.createElement('span');
-        ph.style.color = '#6b7280';
-        ph.style.fontSize = '13px';
-        ph.textContent = 'テキストファイルを「ファイル」から開くか、編集モードでテキストを入力...';
-        cpSelectModeEl.appendChild(ph);
-        cpMoveButtonsEl.style.display = 'none';
+        const dz = document.createElement('div');
+        dz.className = 'cp-viewer-dropzone';
+        dz.innerHTML = '<div class="cp-viewer-dropzone-inner">'
+            + '<div class="cp-viewer-dropzone-icon">'
+            + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">'
+            + '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
+            + '<polyline points="14 2 14 8 20 8"/>'
+            + '<line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>'
+            + '</svg></div>'
+            + '<p class="cp-viewer-dropzone-title">テキストファイルをドロップ</p>'
+            + '<p class="cp-viewer-dropzone-sub">TXTファイルをドラッグ＆ドロップ</p>'
+            + '<div class="cp-panel-dropzone-actions">'
+            + '<button class="cp-viewer-dropzone-btn" onclick="cpHandleFileOpen()">'
+            + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>'
+            + ' ファイルを開く</button>'
+            + '<button class="cp-viewer-dropzone-btn" onclick="cpToggleEditMode()">'
+            + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>'
+            + ' 編集モードで入力</button>'
+            + '</div></div>';
+        cpSelectModeEl.appendChild(dz);
         return;
     }
 
@@ -1431,20 +1631,6 @@ function cpRenderSelectMode() {
     }
 
     cpSelectModeEl.appendChild(pre);
-
-    // 移動ボタン
-    if (cpSelectedChunkIndex !== null && cpChunks[cpSelectedChunkIndex] && cpChunks[cpSelectedChunkIndex].type === 'dialogue') {
-        cpMoveButtonsEl.style.display = 'flex';
-        cpBtnMoveUp.disabled = cpSelectedChunkIndex === 0;
-        cpBtnMoveDown.disabled = cpSelectedChunkIndex === cpChunks.length - 1;
-        let cnt = 0;
-        for (let i = 0; i <= cpSelectedChunkIndex; i++) {
-            if (cpChunks[i].type === 'dialogue') cnt++;
-        }
-        cpMoveCounterEl.textContent = cnt;
-    } else {
-        cpMoveButtonsEl.style.display = 'none';
-    }
 
     cpUpdateToolbarState();
     cpScrollToSelected();
@@ -1536,6 +1722,7 @@ function cpHandleFileOpen() {
                 if (content.charCodeAt(0) === 0xFEFF) content = content.substring(1);
                 cpComicPotHeader = cpExtractComicPotHeader(content);
                 cpText = content;
+                cpSavedText = cpText;
                 cpChunks = cpParseTextToChunks(content);
                 cpSelectedChunkIndex = null;
                 cpIsEditing = false;
@@ -1563,6 +1750,7 @@ async function cpHandleFileSave() {
         // 既存パスに上書き保存
         const result = await window.electronAPI.writeTextFile(cpFilePath, cpText);
         if (result.success) {
+            cpSavedText = cpText;
             cpShowNotify('保存しました: ' + cpFileName, 'var(--sage)');
         } else {
             cpShowNotify('保存に失敗しました', '#ef4444');
@@ -1591,6 +1779,7 @@ async function cpHandleFileSaveAs() {
     const saveResult = await window.electronAPI.writeTextFile(dialogResult.filePath, cpText);
     if (saveResult.success) {
         cpFilePath = dialogResult.filePath;
+        cpSavedText = cpText;
         // ファイル名を更新
         const parts = dialogResult.filePath.replace(/\\/g, '/').split('/');
         cpFileName = parts[parts.length - 1];
@@ -1620,7 +1809,7 @@ function cpFallbackCopy() {
     document.body.appendChild(ta);
     ta.select();
     try { document.execCommand('copy'); cpShowNotify('コピーしました！', 'var(--sage)'); }
-    catch (e) { alert('コピーに失敗しました。'); }
+    catch (e) { showToast('コピーに失敗しました。', 'error'); }
     document.body.removeChild(ta);
 }
 
@@ -2189,7 +2378,7 @@ function cpSyncToPage(pageNum) {
 }
 
 // ES Module exports
-export { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder };
+export { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder });
+Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder });

@@ -8,6 +8,13 @@
 </head>
 <body>
 
+<!-- グローバル通知ダイアログ -->
+<dialog id="globalAlertDialog" class="global-alert-dialog">
+    <div class="global-alert-icon" id="globalAlertIcon"></div>
+    <div class="global-alert-msg" id="globalAlertMsg"></div>
+    <form method="dialog"><button class="global-alert-btn" autofocus>OK</button></form>
+</dialog>
+
 <!-- ランディング画面（初期表示） -->
 <div id="landingScreen" class="landing-screen">
     <input type="hidden" id="landingLabelSelect" value="">
@@ -79,7 +86,7 @@
 
         <!-- テキストエディタへの導線 -->
         <div class="landing-shortcut">
-            <button class="landing-shortcut-btn" onclick="goToComicPotEditor('extraction', { showViewer: true })">
+            <button class="landing-shortcut-btn" onclick="goToComicPotEditor('landing', { showViewer: true })">
                 <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
                 テキストエディタを開く
             </button>
@@ -1244,6 +1251,36 @@
         </div>
     </div>
 
+    <!-- 保存確認モーダル -->
+    <div class="cp-modal-overlay" id="cpSaveConfirmModal" onmousedown="if(event.target===this)cpCloseSaveConfirm()">
+        <div class="cp-modal cp-save-confirm-modal" onmousedown="event.stopPropagation()">
+            <div class="cp-save-confirm-icon">
+                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                </svg>
+            </div>
+            <h3>テキストが未保存です</h3>
+            <p class="cp-save-confirm-sub">校正プロンプトへ移動する前に保存しますか？</p>
+            <div class="cp-save-confirm-filename" id="cpSaveConfirmFilename"></div>
+            <div class="cp-save-confirm-actions">
+                <button class="cp-save-confirm-btn cp-save-confirm-overwrite" id="cpSaveConfirmOverwrite" onclick="cpSaveConfirmAction('overwrite')">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    上書き保存
+                </button>
+                <button class="cp-save-confirm-btn cp-save-confirm-saveas" onclick="cpSaveConfirmAction('saveas')">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                    別名で保存
+                </button>
+                <button class="cp-save-confirm-btn cp-save-confirm-skip" onclick="cpSaveConfirmAction('skip')">
+                    保存せず移動
+                </button>
+            </div>
+            <button class="cp-save-confirm-cancel" onclick="cpCloseSaveConfirm()">キャンセル</button>
+        </div>
+    </div>
+
     <!-- ヘッダー -->
     <header class="cp-header">
         <img src="logo/progen_logo.png" alt="PROGEN" class="cp-header-logo" onclick="goBackFromComicPotEditor()" style="cursor:pointer;" title="戻る">
@@ -1266,6 +1303,7 @@
                 <button class="cp-toolbar-btn" onclick="cpLoadResultJson()" title="校正結果JSONを読み込み"><span class="cp-toolbar-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>JSON</button>
             </div>
             <div class="cp-toolbar-spacer"></div>
+            <button class="cp-toolbar-btn cp-toolbar-proofreading" onclick="cpGoToProofreading()" title="校正プロンプトへ移動"><span class="cp-toolbar-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14l2 2 4-4"/></svg></span>校正プロンプト</button>
             <button class="cp-toolbar-btn cp-toolbar-back" onclick="goBackFromComicPotEditor()" title="前の画面に戻る"><span class="cp-toolbar-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></span>戻る</button>
         </div>
     </header>
@@ -1380,15 +1418,8 @@
                 </div>
             </div>
             <textarea id="cpEditTextArea" class="cp-edit-textarea" placeholder="テキストを入力、「ファイル」から開く、またはTXTファイルをドロップ..."></textarea>
-            <div id="cpSelectMode" class="cp-select-mode">
-                <span class="cp-placeholder">テキストファイルを「ファイル」から開くか、編集モードでテキストを入力、またはTXTファイルをドロップ...</span>
-            </div>
+            <div id="cpSelectMode" class="cp-select-mode"></div>
 
-            <div id="cpMoveButtons" class="cp-move-buttons">
-                <button id="cpBtnMoveUp" onclick="cpMoveChunkUp()" title="上へ (Shift+↑)">&#9650;</button>
-                <div class="cp-move-counter" id="cpMoveCounter">-</div>
-                <button id="cpBtnMoveDown" onclick="cpMoveChunkDown()" title="下へ (Shift+↓)">&#9660;</button>
-            </div>
 
             <button id="cpCopyBtnFloat" class="cp-copy-float" onclick="cpHandleCopy()"><span class="cp-toolbar-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span>コピー</button>
         </div>

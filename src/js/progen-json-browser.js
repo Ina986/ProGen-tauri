@@ -163,7 +163,7 @@ async function startNewCreation(mode) {
 // JSONフォルダブラウザを開く
 async function openJsonFolderBrowser(mode = 'edit', autoExpandLabel = '') {
     if (!window.electronAPI || !window.electronAPI.isElectron) {
-        alert('この機能はElectronアプリでのみ使用できます');
+        showToast('この機能はElectronアプリでのみ使用できます', 'error');
         return;
     }
 
@@ -533,7 +533,7 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
         const result = await window.electronAPI.readJsonFile(filePath);
 
         if (!result.success) {
-            alert('JSONファイルの読み込みに失敗しました: ' + result.error);
+            showToast('JSONファイルの読み込みに失敗しました: ' + result.error, 'error');
             return;
         }
 
@@ -549,21 +549,19 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
         // JSONデータを処理
         processLoadedJson(result.data, fileName);
 
-        // 読み込み成功通知
-        alert(`"${fileName}" を読み込みました`);
-
-        // モードに応じて遷移先を変更
+        // モードに応じて遷移先を変更（通知より先に遷移）
         if (jsonFolderBrowserMode === 'proofreading') {
-            // 校正プロンプトページへ直接遷移
             goToProofreadingPageFromMain('simple');
         } else if (jsonFolderBrowserMode === 'formatting') {
-            // 整形モード：添付ファイルをTXTのみに設定
             selectDataType('txt_only');
         }
 
+        // 読み込み成功通知
+        showToast(`"${fileName}" を読み込みました`, 'success');
+
     } catch (error) {
         console.error('JSONファイルの読み込みに失敗:', error);
-        alert('JSONファイルの読み込みに失敗しました: ' + error.message);
+        showToast('JSONファイルの読み込みに失敗しました: ' + error.message, 'error');
     }
 }
 
@@ -601,7 +599,7 @@ function closeFolderActionModal() {
 // フォルダブラウザから直接新規作品登録を開始
 function startNewWorkFromBrowser() {
     if (!jsonFolderExpandedLabel.name) {
-        alert('レーベルフォルダを展開してから「新規作品を登録」を押してください。');
+        showToast('レーベルフォルダを展開してから「新規作品を登録」を押してください。', 'warning');
         return;
     }
     selectedFolderPath = jsonFolderExpandedLabel.path;
@@ -672,7 +670,7 @@ async function createNewWorkJson() {
     const label = selectedFolderName;
 
     if (!title) {
-        alert('作品名を入力してください');
+        showToast('作品名を入力してください', 'warning');
         return;
     }
 
@@ -736,7 +734,7 @@ async function createNewWorkJson() {
         const result = await window.electronAPI.writeJsonFile(fullPath, newWorkJson);
 
         if (!result.success) {
-            alert('保存に失敗しました: ' + result.error);
+            showToast('保存に失敗しました: ' + result.error, 'error');
             return;
         }
 
@@ -773,11 +771,11 @@ async function createNewWorkJson() {
             saveAsBtn.style.display = '';
         }
 
-        alert(`"${fullFileName}" を作成しました`);
+        showToast(`"${fullFileName}" を作成しました`, 'success');
 
     } catch (error) {
         console.error('新規作品登録エラー:', error);
-        alert('保存に失敗しました: ' + error.message);
+        showToast('保存に失敗しました: ' + error.message, 'error');
     }
 
     pendingSaveAfterFolderSelect = false;
@@ -798,7 +796,7 @@ async function selectJsonForOverwrite(jsonPath, jsonName) {
         const result = await window.electronAPI.readJsonFile(jsonPath);
 
         if (!result.success) {
-            alert('JSONファイルの読み込みに失敗しました: ' + result.error);
+            showToast('JSONファイルの読み込みに失敗しました: ' + result.error, 'error');
             pendingSaveAfterFolderSelect = false;
             return;
         }
@@ -835,7 +833,7 @@ async function selectJsonForOverwrite(jsonPath, jsonName) {
 
     } catch (error) {
         console.error('JSONファイルの読み込みに失敗:', error);
-        alert('JSONファイルの読み込みに失敗しました: ' + error.message);
+        showToast('JSONファイルの読み込みに失敗しました: ' + error.message, 'error');
         pendingSaveAfterFolderSelect = false;
     }
 }
@@ -1001,7 +999,7 @@ function processLoadedJson(data, fileName) {
 // 表記ルールをJSONに保存（最適化版：workInfoの直後に配置、オプションも保存）
 async function saveProofRulesToJson() {
     if (!window.electronAPI || !window.electronAPI.isElectron) {
-        alert('この機能はElectronアプリでのみ使用できます');
+        showToast('この機能はElectronアプリでのみ使用できます', 'error');
         return;
     }
 
@@ -1045,24 +1043,24 @@ async function saveProofRulesToJson() {
         const result = await window.electronAPI.writeJsonFile(state.currentJsonPath, updatedJson);
 
         if (!result.success) {
-            alert('保存に失敗しました: ' + result.error);
+            showToast('保存に失敗しました: ' + result.error, 'error');
             return;
         }
 
         // グローバル状態を更新
         state.currentLoadedJson = updatedJson;
 
-        alert('表記ルールをJSONに保存しました');
+        showToast('表記ルールをJSONに保存しました', 'success');
     } catch (error) {
         console.error('JSON保存エラー:', error);
-        alert('保存に失敗しました: ' + error.message);
+        showToast('保存に失敗しました: ' + error.message, 'error');
     }
 }
 
 // 表記ルールを別のJSONに保存（別名保存）
 async function saveProofRulesToNewJson() {
     if (!window.electronAPI || !window.electronAPI.isElectron) {
-        alert('この機能はElectronアプリでのみ使用できます');
+        showToast('この機能はElectronアプリでのみ使用できます', 'error');
         return;
     }
 
@@ -1103,14 +1101,14 @@ async function saveToNewJsonFile(newPath, newFileName) {
         const result = await window.electronAPI.writeJsonFile(newPath, newJson);
 
         if (!result.success) {
-            alert('保存に失敗しました: ' + result.error);
+            showToast('保存に失敗しました: ' + result.error, 'error');
             return;
         }
 
-        alert(`"${newFileName}" に保存しました`);
+        showToast(`"${newFileName}" に保存しました`, 'success');
     } catch (error) {
         console.error('別名保存エラー:', error);
-        alert('保存に失敗しました: ' + error.message);
+        showToast('保存に失敗しました: ' + error.message, 'error');
     }
 }
 

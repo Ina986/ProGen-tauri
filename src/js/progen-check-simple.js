@@ -97,7 +97,7 @@ function updateSimpleCheckSubmitBtn() {
 // 簡易チェックプロンプトを生成してGeminiで開く
 function copySimpleCheckAndOpenGemini() {
     if (simpleCheckTxtFiles.length === 0) {
-        alert('セリフTXTファイルを選択してください');
+        showToast('セリフTXTファイルを選択してください', 'warning');
         return;
     }
 
@@ -134,7 +134,7 @@ function startSimpleCheckFromLanding(input) {
                 // すべてのファイルが読み込まれたらプロンプトを生成
                 const prompt = generateSimpleCheckPromptFromFiles(tempFiles);
                 navigator.clipboard.writeText(prompt).then(() => {
-                    alert('プロンプトをクリップボードにコピーしました。\nGeminiを開きます。');
+                    showToast('プロンプトをコピーしました。Geminiを開きます', 'success');
                     window.open('https://gemini.google.com/app', '_blank');
                 });
             }

@@ -97,7 +97,7 @@ function updateVariationCheckSubmitBtn() {
 // 詳細チェックプロンプトを生成してGeminiで開く
 function copyVariationCheckAndOpenGemini() {
     if (variationCheckTxtFiles.length === 0) {
-        alert('セリフTXTファイルを選択してください');
+        showToast('セリフTXTファイルを選択してください', 'warning');
         return;
     }
 
@@ -133,7 +133,7 @@ function startVariationCheckFromLanding(input) {
             if (loadedCount === totalFiles) {
                 const prompt = generateVariationCheckPromptFromFiles(tempFiles);
                 navigator.clipboard.writeText(prompt).then(() => {
-                    alert('プロンプトをクリップボードにコピーしました。\nGeminiを開きます。');
+                    showToast('プロンプトをコピーしました。Geminiを開きます', 'success');
                     window.open('https://gemini.google.com/app', '_blank');
                 });
             }

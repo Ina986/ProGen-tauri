@@ -116,7 +116,7 @@ async function openTxtAddFolderBrowser() {
     closeTxtAddSourceSelectModal();
 
     if (!window.electronAPI || !window.electronAPI.isElectron) {
-        alert('この機能はElectronアプリでのみ使用できます');
+        showToast('この機能はElectronアプリでのみ使用できます', 'error');
         return;
     }
 
@@ -165,7 +165,7 @@ async function openTxtFolderBrowser() {
     closeTxtSourceSelectModal();
 
     if (!window.electronAPI || !window.electronAPI.isElectron) {
-        alert('この機能はElectronアプリでのみ使用できます');
+        showToast('この機能はElectronアプリでのみ使用できます', 'error');
         return;
     }
 
@@ -450,7 +450,7 @@ async function loadSelectedTxtFiles() {
     loadBtn.textContent = '選択したファイルを読込';
 
     if (errorCount > 0) {
-        alert(`${fileInfos.length}件を読み込みました（${errorCount}件のエラー）`);
+        showToast(`${fileInfos.length}件を読み込みました（${errorCount}件のエラー）`, 'warning');
     }
 
     // モードをリセット

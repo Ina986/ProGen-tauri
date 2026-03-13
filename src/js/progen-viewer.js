@@ -400,12 +400,12 @@ function handleViewerKeydown(e) {
         }
     }
 
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowUp') && !e.shiftKey) {
         if (!e.target.matches('input, textarea, select')) {
             e.preventDefault();
             cpViewerPrev();
         }
-    } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+    } else if ((e.key === 'ArrowRight' || e.key === 'ArrowDown') && !e.shiftKey) {
         if (!e.target.matches('input, textarea, select')) {
             e.preventDefault();
             cpViewerNext();

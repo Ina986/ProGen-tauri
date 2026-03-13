@@ -103,7 +103,7 @@ function clearLandingProofreadingFiles() {
 // ランディング画面から詳細チェックを開始
 function startLandingVariationCheck() {
     if (!state.landingProofreadingContent) {
-        alert('セリフTXTファイルを読み込んでください');
+        showToast('セリフTXTファイルを読み込んでください', 'warning');
         return;
     }
 
@@ -116,7 +116,7 @@ function startLandingVariationCheck() {
 // ランディング画面から簡易チェックを開始
 function startLandingSimpleCheck() {
     if (!state.landingProofreadingContent) {
-        alert('セリフTXTファイルを読み込んでください');
+        showToast('セリフTXTファイルを読み込んでください', 'warning');
         return;
     }
 

@@ -4108,6 +4108,41 @@ tr.inactive td {
     height: 100vh;
     background: #fff;
 }
+/* グローバル通知ダイアログ（<dialog>要素） */
+.global-alert-dialog {
+    border: none; border-radius: 14px;
+    background: var(--surface);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.12);
+    padding: 28px 32px 22px; min-width: 280px; max-width: 440px;
+    text-align: center;
+    animation: modalIn 0.2s ease-out;
+}
+.global-alert-dialog::backdrop {
+    background: rgba(0,0,0,0.25);
+    backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+}
+.global-alert-icon {
+    width: 52px; height: 52px; margin: 0 auto 16px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 14px;
+}
+.global-alert-msg {
+    font-size: 14px; line-height: 1.6; color: var(--text);
+    margin-bottom: 20px; word-break: break-word;
+}
+.global-alert-btn {
+    background: var(--surface-dim); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 8px;
+    padding: 7px 36px; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s;
+}
+.global-alert-btn:hover {
+    background: #ebedf0; border-color: rgba(0,0,0,0.15);
+}
+.global-alert-btn:focus-visible {
+    outline: 2px solid var(--ink-blue); outline-offset: 2px;
+}
+
 .cp-notification {
     position: fixed; top: 48px; left: 50%;
     transform: translateX(-50%) translateY(-8px);
@@ -4136,6 +4171,68 @@ tr.inactive td {
     padding: 24px; min-width: 360px; max-width: 500px;
 }
 .cp-modal h3 { font-size: 16px; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+
+/* 保存確認モーダル */
+.cp-save-confirm-modal {
+    text-align: center; padding: 32px 28px 24px;
+    min-width: 340px; max-width: 400px;
+    animation: modalIn 0.25s ease-out;
+}
+.cp-save-confirm-modal h3 {
+    border-bottom: none; padding-bottom: 0; margin-bottom: 6px;
+    font-size: 15px; font-weight: 600;
+}
+.cp-save-confirm-icon {
+    width: 48px; height: 48px; margin: 0 auto 14px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 12px; background: var(--surface-dim);
+    color: var(--text-dim);
+}
+.cp-save-confirm-sub {
+    font-size: 12px; color: var(--text-secondary); margin: 0 0 16px;
+}
+.cp-save-confirm-filename {
+    font-size: 11px; color: var(--text-dim);
+    background: var(--surface-dim); border-radius: 6px;
+    padding: 6px 12px; margin-bottom: 20px;
+    font-family: Consolas, "Courier New", monospace;
+    word-break: break-all; display: none;
+}
+.cp-save-confirm-filename.show { display: block; }
+.cp-save-confirm-actions {
+    display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px;
+}
+.cp-save-confirm-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 10px 16px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text); cursor: pointer; transition: all 0.15s;
+}
+.cp-save-confirm-btn:hover {
+    background: var(--surface-dim); border-color: var(--border-strong);
+}
+.cp-save-confirm-overwrite {
+    background: var(--ink-blue); color: #fff; border-color: var(--ink-blue);
+}
+.cp-save-confirm-overwrite:hover {
+    background: #2a4a8a; border-color: #2a4a8a;
+}
+.cp-save-confirm-saveas {
+    background: var(--surface); color: var(--ink-blue); border-color: var(--ink-blue);
+}
+.cp-save-confirm-saveas:hover {
+    background: var(--ink-blue-light);
+}
+.cp-save-confirm-skip {
+    border: none; background: none; color: var(--text-secondary);
+    font-size: 12px; padding: 6px;
+}
+.cp-save-confirm-skip:hover { color: var(--text); background: none; border: none; }
+.cp-save-confirm-cancel {
+    background: none; border: none; color: var(--text-dim);
+    font-size: 11px; cursor: pointer; padding: 4px 8px; margin-top: 4px;
+}
+.cp-save-confirm-cancel:hover { color: var(--text-secondary); }
 
 /* JSONブラウザモーダル — Editorial Book Design */
 .cp-json-browser-modal {
@@ -4334,34 +4431,36 @@ tr.inactive td {
 .cp-serif-file-item .cp-sf-size { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
 .cp-header {
     background: var(--sage);
-    padding: 4px 12px; display: flex; align-items: center;
-    flex-shrink: 0; gap: 10px;
+    padding: 4px 8px; display: flex; align-items: center;
+    flex-shrink: 0; gap: 6px; overflow: hidden;
 }
+.cp-header > .header-spacer { flex: 1 1 0; min-width: 0; }
 .cp-header-logo { height: 28px; }
 .cp-badge { background: rgba(255,255,255,0.2) !important; color: #fff; }
 .cp-badge .mode-badge-text { color: #fff; }
 .cp-toolbar {
-    display: flex; align-items: center; gap: 6px;
+    display: flex; align-items: center; gap: 4px;
     flex: 1; min-width: 0;
 }
 .cp-toolbar-group {
-    display: flex; align-items: center; gap: 2px;
-    background: rgba(255,255,255,0.10); border-radius: 6px; padding: 2px 3px;
+    display: flex; align-items: center; gap: 1px;
+    background: rgba(255,255,255,0.10); border-radius: 6px; padding: 2px 2px;
 }
 .cp-toolbar-btn {
-    padding: 5px 12px; font-size: 0.78em; background: none; border: none;
+    padding: 5px 6px; font-size: 0.76em; background: none; border: none;
     cursor: pointer; border-radius: 5px; color: rgba(255,255,255,0.88); white-space: nowrap; font-weight: 500;
-    display: inline-flex; align-items: center; gap: 5px; transition: background 0.12s;
+    display: inline-flex; align-items: center; gap: 3px; transition: background 0.12s;
 }
 .cp-toolbar-btn:hover { background: rgba(255,255,255,0.18); color: #fff; }
 .cp-toolbar-btn:disabled { color: rgba(255,255,255,0.3); cursor: not-allowed; }
 .cp-toolbar-btn:disabled:hover { background: none; }
 .cp-toolbar-icon { display: flex; width: 14px; height: 14px; flex-shrink: 0; }
 .cp-toolbar-icon svg { width: 100%; height: 100%; }
+.cp-toolbar-proofreading { font-weight: 600; }
 .cp-toolbar-back { font-weight: 600; opacity: 0.85; }
 .cp-toolbar-back:hover { opacity: 1; }
-.cp-toolbar-sep { width: 1px; height: 20px; background: rgba(255,255,255,0.18); margin: 0 6px; flex-shrink: 0; }
-.cp-toolbar-spacer { flex: 1; }
+.cp-toolbar-sep { width: 1px; height: 20px; background: rgba(255,255,255,0.18); margin: 0 4px; flex-shrink: 0; }
+.cp-toolbar-spacer { flex: 2; min-width: 4px; }
 .cp-titlebar { background: var(--surface-dim); border-bottom: 1px solid var(--border-strong); padding: 2px 8px; font-size: 13px; flex-shrink: 0; }
 .cp-main-area { flex: 1; position: relative; overflow: hidden; display: flex; }
 /* コンテキストバー（エディタ上部・モード切替＋操作ボタン） */
@@ -4448,17 +4547,7 @@ tr.inactive td {
 .cp-drop-indicator { display: block; height: 3px; background: var(--ink-blue); border-radius: 2px; margin: 2px 8px; box-shadow: 0 0 6px rgba(59,130,246,0.5); }
 .cp-ruby-highlight { color: var(--plum); font-weight: bold; }
 .cp-ruby-annotation { color: #a855f7; font-size: 0.85em; }
-.cp-move-buttons {
-    position: absolute; right: 8px; top: 8px;
-    background: #fff; border: 1px solid var(--border-strong); border-radius: 6px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    display: none; flex-direction: column; align-items: center;
-}
-.cp-move-buttons button { display: block; padding: 4px 8px; background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; }
-.cp-move-buttons button:hover { background: var(--surface-dim); }
-.cp-move-buttons button:disabled { color: var(--border-strong); cursor: not-allowed; }
-.cp-move-buttons button:disabled:hover { background: none; }
-.cp-move-counter { font-size: 11px; padding: 2px 8px; border-top: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+
 .cp-copy-float {
     position: absolute; right: 12px; bottom: 12px;
     display: none; align-items: center; gap: 6px;
@@ -4643,7 +4732,7 @@ tr.inactive td {
     border-radius: 12px;
     transition: all 0.25s;
     text-align: center; padding: 32px;
-    padding-bottom: 20%;
+    padding-bottom: 80px;
 }
 .cp-viewer-dropzone-inner:hover,
 .cp-viewer.drag-over .cp-viewer-dropzone-inner {
@@ -4686,6 +4775,12 @@ tr.inactive td {
 .cp-viewer-dropzone-btn:hover {
     background: var(--surface-dim); color: var(--text);
     border-color: var(--border-strong);
+}
+
+/* テキストエリア空状態 — ビューアーのドロップゾーンクラスを共用 */
+.cp-select-mode:has(.cp-viewer-dropzone) {
+    max-width: none; display: flex; padding: 0; overflow: hidden;
+    font-family: inherit;
 }
 
 /* 画像キャンバス — position:absoluteで親から正確なサイズを取得 */

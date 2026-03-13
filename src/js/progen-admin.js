@@ -815,11 +815,11 @@ function adminSaveFromModal() {
 
     // バリデーション
     if (!src.trim()) {
-        alert('変換元を入力してください');
+        showToast('変換元を入力してください', 'warning');
         return;
     }
     if (!dst.trim() && category !== 'character') {
-        alert('変換先を入力してください');
+        showToast('変換先を入力してください', 'warning');
         return;
     }
 
