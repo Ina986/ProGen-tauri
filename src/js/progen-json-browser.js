@@ -547,7 +547,7 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
         state.currentJsonPath = filePath;
 
         // JSONデータを処理
-        await processLoadedJson(result.data, fileName);
+        const { fallbackLabel } = await processLoadedJson(result.data, fileName);
 
         // モードに応じて遷移先を変更（通知より先に遷移）
         if (jsonFolderBrowserMode === 'proofreading') {
@@ -556,8 +556,12 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
             selectDataType('txt_only');
         }
 
-        // 読み込み成功通知
-        showToast(`"${fileName}" を読み込みました`, 'success');
+        // 読み込み成功通知（フォールバック時はwarningで表示）
+        if (fallbackLabel) {
+            showToast(`"${fileName}" を読み込みました（表記ルールが未登録のため、${fallbackLabel}のルールを暫定表示しています）`, 'warning');
+        } else {
+            showToast(`"${fileName}" を読み込みました`, 'success');
+        }
 
     } catch (error) {
         console.error('JSONファイルの読み込みに失敗:', error);
@@ -936,8 +940,9 @@ async function processLoadedJson(data, fileName) {
             await loadMasterRule('汎用（標準）');
             fallbackLabel = '汎用（標準）';
         }
-        showToast(`表記ルールが登録されていないため、${fallbackLabel}のルールを表示しています`, 'warning');
+        return { fallbackLabel };
     }
+    return { fallbackLabel: null };
 
     // 旧形式の場合は新形式に正規化してstate.currentLoadedJsonに保存
     if (!isNewFormat) {
