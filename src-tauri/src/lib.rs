@@ -84,7 +84,9 @@ struct PendingUpdate {
 fn generate_label_key(folder_name: &str) -> String {
     let known_mappings: HashMap<&str, &str> = HashMap::from([
         ("\u{6C4E}\u{7528}\u{FF08}\u{6A19}\u{6E96}\u{FF09}", "default"),
-        ("\u{30AB}\u{30B2}\u{30AD}\u{30E4}\u{30FB}\u{3082}\u{3048}\u{30B9}\u{30BF}", "kagekiya"),
+        ("\u{30AB}\u{30B2}\u{30AD}\u{30E4}\u{30B3}\u{30DF}\u{30C3}\u{30AF}", "kagekiya_comic"),
+        ("\u{3082}\u{3048}\u{30B9}\u{30BF}\u{30D3}\u{30FC}\u{30B9}\u{30C8}", "moesta_beast"),
+        ("\u{FF20}\u{591C}\u{564F}", "at_yobanashi"),
         ("\u{30AA}\u{30C8}\u{30E1}\u{30C1}\u{30AB}", "otomechika"),
         ("\u{4E59}\u{5973}\u{30C1}\u{30C3}\u{30AF}", "otomechikku"),
         ("GG-COMICS", "ggcomics"),
