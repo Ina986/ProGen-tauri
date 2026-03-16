@@ -547,7 +547,7 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
         state.currentJsonPath = filePath;
 
         // JSONデータを処理
-        processLoadedJson(result.data, fileName);
+        await processLoadedJson(result.data, fileName);
 
         // モードに応じて遷移先を変更（通知より先に遷移）
         if (jsonFolderBrowserMode === 'proofreading') {
@@ -877,7 +877,7 @@ function findMatchingPresetLabel(labelName) {
 }
 
 // 読み込んだJSONを処理
-function processLoadedJson(data, fileName) {
+async function processLoadedJson(data, fileName) {
     // 新形式（proofRules + presetData）と旧形式（フラット）の両方に対応
     const isNewFormat = data.presetData !== undefined;
     const presetData = isNewFormat ? data.presetData : data;
@@ -888,18 +888,20 @@ function processLoadedJson(data, fileName) {
 
     // 2. 表記ルールがあれば読み込み
     const proofRules = data.proofRules;
+    const hasProofRules = proofRules && proofRules.proof && Array.isArray(proofRules.proof) && proofRules.proof.length > 0;
+
+    if (hasProofRules) {
+        state.currentProofRules = proofRules.proof;
+        // カテゴリがないルールにはデフォルトを設定、人物名にはaddRubyを設定
+        state.currentProofRules.forEach(r => {
+            if (!r.category) r.category = 'basic';
+            // 人物名でaddRubyが未設定の場合はtrueに
+            if (r.category === 'character' && r.addRuby === undefined) {
+                r.addRuby = true;
+            }
+        });
+    }
     if (proofRules) {
-        if (proofRules.proof && Array.isArray(proofRules.proof)) {
-            state.currentProofRules = proofRules.proof;
-            // カテゴリがないルールにはデフォルトを設定、人物名にはaddRubyを設定
-            state.currentProofRules.forEach(r => {
-                if (!r.category) r.category = 'basic';
-                // 人物名でaddRubyが未設定の場合はtrueに
-                if (r.category === 'character' && r.addRuby === undefined) {
-                    r.addRuby = true;
-                }
-            });
-        }
         if (proofRules.symbol && Array.isArray(proofRules.symbol)) {
             state.symbolRules = proofRules.symbol;
         }
@@ -919,6 +921,22 @@ function processLoadedJson(data, fileName) {
             if (opts.numberRuleMonth !== undefined) state.numberRuleMonth = opts.numberRuleMonth;
             if (opts.numberSubRulesEnabled !== undefined) state.numberSubRulesEnabled = opts.numberSubRulesEnabled;
         }
+    }
+
+    // 表記ルールが空の場合：レーベルのマスタールール → 汎用ルールにフォールバック
+    if (!hasProofRules) {
+        let fallbackLabel = '';
+        if (labelName) {
+            await loadMasterRule(labelName);
+            if (state.currentProofRules.length > 0) {
+                fallbackLabel = labelName;
+            }
+        }
+        if (!fallbackLabel) {
+            await loadMasterRule('汎用（標準）');
+            fallbackLabel = '汎用（標準）';
+        }
+        showToast(`表記ルールが登録されていないため、${fallbackLabel}のルールを表示しています`, 'warning');
     }
 
     // 旧形式の場合は新形式に正規化してstate.currentLoadedJsonに保存
