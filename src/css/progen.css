@@ -4433,6 +4433,7 @@ tr.inactive td {
     background: var(--sage);
     padding: 4px 8px; display: flex; align-items: center;
     flex-shrink: 0; gap: 6px; overflow: hidden;
+    flex-wrap: wrap;
 }
 .cp-header > .header-spacer { flex: 1 1 0; min-width: 0; }
 .cp-header-logo { height: 28px; }
@@ -4440,7 +4441,7 @@ tr.inactive td {
 .cp-badge .mode-badge-text { color: #fff; }
 .cp-toolbar {
     display: flex; align-items: center; gap: 4px;
-    flex: 1; min-width: 0;
+    flex-shrink: 1; min-width: 0; flex-wrap: wrap;
 }
 .cp-toolbar-group {
     display: flex; align-items: center; gap: 1px;
