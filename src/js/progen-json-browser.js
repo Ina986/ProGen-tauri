@@ -844,6 +844,7 @@ async function selectJsonForOverwrite(jsonPath, jsonName) {
 
 // プリセットレーベル名と値のマッピング
 const presetLabelMap = {
+    '変更なし': 'default',
     '汎用': 'default',
     '汎用 (標準)': 'default',
     'Nupu': 'nupu',
@@ -938,8 +939,8 @@ async function processLoadedJson(data, fileName) {
             }
         }
         if (!fallbackLabel) {
-            await loadMasterRule('汎用（標準）');
-            fallbackLabel = '汎用（標準）';
+            await loadMasterRule('変更なし');
+            fallbackLabel = '変更なし';
         }
     }
 
