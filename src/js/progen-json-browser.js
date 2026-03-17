@@ -928,8 +928,9 @@ async function processLoadedJson(data, fileName) {
     }
 
     // 表記ルールが空の場合：レーベルのマスタールール → 汎用ルールにフォールバック
+    let fallbackLabel = null;
     if (!hasProofRules) {
-        let fallbackLabel = '';
+        fallbackLabel = '';
         if (labelName) {
             await loadMasterRule(labelName);
             if (state.currentProofRules.length > 0) {
@@ -940,9 +941,7 @@ async function processLoadedJson(data, fileName) {
             await loadMasterRule('汎用（標準）');
             fallbackLabel = '汎用（標準）';
         }
-        return { fallbackLabel };
     }
-    return { fallbackLabel: null };
 
     // 旧形式の場合は新形式に正規化してstate.currentLoadedJsonに保存
     if (!isNewFormat) {
@@ -1017,6 +1016,8 @@ async function processLoadedJson(data, fileName) {
     if (geminiBtn) {
         geminiBtn.removeAttribute('disabled');
     }
+
+    return { fallbackLabel };
 }
 
 // 表記ルールをJSONに保存（最適化版：workInfoの直後に配置、オプションも保存）
