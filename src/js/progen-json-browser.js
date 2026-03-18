@@ -226,6 +226,44 @@ function closeJsonFolderBrowser() {
     modal.style.display = 'none';
 }
 
+// 読み込み済みJSONの紐づけを解除（編集中データは保持）
+function clearLoadedJsonSelection() {
+    const hadJsonSelection = Boolean(state.currentJsonPath);
+
+    state.currentJsonPath = '';
+    pendingSaveAfterFolderSelect = false;
+    pendingSaveAsNew = false;
+    selectedSaveFolderPath = '';
+
+    const jsonIndicator = document.getElementById('loadedJsonIndicator');
+    const jsonFilename = document.getElementById('loadedJsonFilename');
+    if (jsonIndicator) jsonIndicator.style.display = 'none';
+    if (jsonFilename) jsonFilename.textContent = '';
+
+    const proofJsonIndicator = document.getElementById('proofreadingJsonIndicator');
+    const proofJsonFilename = document.getElementById('proofreadingJsonFilename');
+    if (proofJsonIndicator) proofJsonIndicator.style.display = 'none';
+    if (proofJsonFilename) proofJsonFilename.textContent = '';
+
+    const saveBtn = document.getElementById('saveToJsonBtn');
+    const saveAsBtn = document.getElementById('saveAsJsonBtn');
+    if (saveBtn) {
+        saveBtn.textContent = '保存';
+        saveBtn.style.display = 'inline-block';
+    }
+    if (saveAsBtn) {
+        saveAsBtn.style.display = 'none';
+    }
+
+    if (typeof updateHeaderSaveButtons === 'function') {
+        updateHeaderSaveButtons();
+    }
+
+    if (hadJsonSelection) {
+        showToast('JSON選択をクリアしました', 'success');
+    }
+}
+
 // フォルダ内容を読み込んで表示
 async function loadJsonFolderContents(dirPath, container, isRootLevel = false) {
     const result = await window.electronAPI.listDirectory(dirPath);
@@ -1201,7 +1239,7 @@ function initJsonFolderBrowser() {
 
 
 // ES Module exports
-export { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser };
+export { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser });
+Object.assign(window, { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser });
