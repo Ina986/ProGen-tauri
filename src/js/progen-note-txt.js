@@ -62,6 +62,28 @@ let txtSearchTimeout = null;
 let selectedTxtFiles = []; // 選択されたTXTファイルのリスト
 
 // TXTソース選択モーダルを開く
+function buildTxtFileFromPaste(name, text, fallbackName = '貼り付けテキスト.txt') {
+    const content = (text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim();
+    if (!content) return null;
+
+    let safeName = (name || '').trim() || fallbackName;
+    if (!/\.txt$/i.test(safeName)) safeName += '.txt';
+
+    return {
+        name: safeName,
+        content,
+        size: new Blob([content]).size,
+        path: ''
+    };
+}
+
+function clearTxtPasteFields(nameId, textId) {
+    const nameEl = document.getElementById(nameId);
+    const textEl = document.getElementById(textId);
+    if (nameEl) nameEl.value = '';
+    if (textEl) textEl.value = '';
+}
+
 function openTxtSourceSelectModal() {
     document.getElementById('txtSourceSelectModal').style.display = 'flex';
 
@@ -87,6 +109,11 @@ function selectTxtSourceLocal() {
     document.getElementById('proofreadingFileInput').click();
 }
 
+function selectTxtSourcePaste() {
+    const textarea = document.getElementById('txtSourcePasteText');
+    if (textarea) textarea.focus();
+}
+
 // ファイル追加ソース選択モーダル用の変数
 let txtAddSourceMode = 'extraction'; // 'extraction' or 'proofreading'
 
@@ -109,6 +136,13 @@ function selectTxtAddSourceLocal() {
     } else {
         document.getElementById('proofreadingTxtAddFile').click();
     }
+}
+
+function selectTxtAddSourcePaste() {
+    closeTxtAddSourceSelectModal();
+    const targetId = txtAddSourceMode === 'extraction' ? 'txtManagePasteText' : 'proofreadingPasteText';
+    const textarea = document.getElementById(targetId);
+    if (textarea) textarea.focus();
 }
 
 // Gドライブからファイルを追加（フォルダブラウザを開く）
@@ -607,7 +641,7 @@ function clearTxtFolderSearch() {
 
 
 // ES Module exports
-export { openNoteGem, openTxtSourceSelectModal, closeTxtSourceSelectModal, selectTxtSourceLocal, openTxtAddSourceSelectModal, closeTxtAddSourceSelectModal, selectTxtAddSourceLocal, openTxtAddFolderBrowser, openTxtFolderBrowser, closeTxtFolderBrowser, loadTxtFolderContents, createTxtFolderItem, toggleTxtFileSelection, updateTxtSelectionUI, loadSelectedTxtFiles, cacheTxtFiles, collectTxtFilesRecursive, setupTxtFolderSearch, handleTxtFolderSearch, searchTxtFiles, clearTxtFolderSearch };
+export { openNoteGem, buildTxtFileFromPaste, clearTxtPasteFields, openTxtSourceSelectModal, closeTxtSourceSelectModal, selectTxtSourceLocal, selectTxtSourcePaste, openTxtAddSourceSelectModal, closeTxtAddSourceSelectModal, selectTxtAddSourceLocal, selectTxtAddSourcePaste, openTxtAddFolderBrowser, openTxtFolderBrowser, closeTxtFolderBrowser, loadTxtFolderContents, createTxtFolderItem, toggleTxtFileSelection, updateTxtSelectionUI, loadSelectedTxtFiles, cacheTxtFiles, collectTxtFilesRecursive, setupTxtFolderSearch, handleTxtFolderSearch, searchTxtFiles, clearTxtFolderSearch };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { openNoteGem, openTxtSourceSelectModal, closeTxtSourceSelectModal, selectTxtSourceLocal, openTxtAddSourceSelectModal, closeTxtAddSourceSelectModal, selectTxtAddSourceLocal, openTxtAddFolderBrowser, openTxtFolderBrowser, closeTxtFolderBrowser, loadTxtFolderContents, createTxtFolderItem, toggleTxtFileSelection, updateTxtSelectionUI, loadSelectedTxtFiles, cacheTxtFiles, collectTxtFilesRecursive, setupTxtFolderSearch, handleTxtFolderSearch, searchTxtFiles, clearTxtFolderSearch });
+Object.assign(window, { openNoteGem, buildTxtFileFromPaste, clearTxtPasteFields, openTxtSourceSelectModal, closeTxtSourceSelectModal, selectTxtSourceLocal, selectTxtSourcePaste, openTxtAddSourceSelectModal, closeTxtAddSourceSelectModal, selectTxtAddSourceLocal, selectTxtAddSourcePaste, openTxtAddFolderBrowser, openTxtFolderBrowser, closeTxtFolderBrowser, loadTxtFolderContents, createTxtFolderItem, toggleTxtFileSelection, updateTxtSelectionUI, loadSelectedTxtFiles, cacheTxtFiles, collectTxtFilesRecursive, setupTxtFolderSearch, handleTxtFolderSearch, searchTxtFiles, clearTxtFolderSearch });

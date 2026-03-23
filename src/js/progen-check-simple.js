@@ -2,6 +2,7 @@
    簡易チェック機能（誤字・脱字・人名ルビのみ）
    ========================================= */
 import { state } from './progen-state.js';
+import { buildTxtFileFromPaste, clearTxtPasteFields } from './progen-note-txt.js';
 let simpleCheckTxtFiles = []; // 簡易チェック用のTXTファイル
 
 // 簡易チェックモーダルを開く
@@ -45,6 +46,22 @@ function loadSimpleCheckTxt(input) {
     });
 
     input.value = '';
+}
+
+function addSimpleCheckTxtFromPaste() {
+    const fileInfo = buildTxtFileFromPaste(
+        document.getElementById('simpleCheckPasteName')?.value,
+        document.getElementById('simpleCheckPasteText')?.value
+    );
+    if (!fileInfo) {
+        showToast('貼り付けるテキストを入力してください', 'warning');
+        return;
+    }
+
+    simpleCheckTxtFiles.push(fileInfo);
+    renderSimpleCheckFileList();
+    updateSimpleCheckSubmitBtn();
+    clearTxtPasteFields('simpleCheckPasteName', 'simpleCheckPasteText');
 }
 
 // 簡易チェック用ファイルリスト描画
@@ -732,7 +749,7 @@ function generateSimpleCheckPrompt() {
 
 
 // ES Module exports
-export { openSimpleCheckModal, closeSimpleCheckModal, loadSimpleCheckTxt, renderSimpleCheckFileList, removeSimpleCheckTxt, updateSimpleCheckSubmitBtn, copySimpleCheckAndOpenGemini, startSimpleCheckFromLanding, generateSimpleCheckPromptFromFiles, generateSimpleCheckPromptWithText, getNonJoyoCheckItemXml, generateSimpleCheckWithRulesPromptWithText, generateUnificationRulesXmlForCheck, generateSimpleCheckPrompt };
+export { openSimpleCheckModal, closeSimpleCheckModal, loadSimpleCheckTxt, addSimpleCheckTxtFromPaste, renderSimpleCheckFileList, removeSimpleCheckTxt, updateSimpleCheckSubmitBtn, copySimpleCheckAndOpenGemini, startSimpleCheckFromLanding, generateSimpleCheckPromptFromFiles, generateSimpleCheckPromptWithText, getNonJoyoCheckItemXml, generateSimpleCheckWithRulesPromptWithText, generateUnificationRulesXmlForCheck, generateSimpleCheckPrompt };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { openSimpleCheckModal, closeSimpleCheckModal, loadSimpleCheckTxt, renderSimpleCheckFileList, removeSimpleCheckTxt, updateSimpleCheckSubmitBtn, copySimpleCheckAndOpenGemini, startSimpleCheckFromLanding, generateSimpleCheckPromptFromFiles, generateSimpleCheckPromptWithText, getNonJoyoCheckItemXml, generateSimpleCheckWithRulesPromptWithText, generateUnificationRulesXmlForCheck, generateSimpleCheckPrompt });
+Object.assign(window, { openSimpleCheckModal, closeSimpleCheckModal, loadSimpleCheckTxt, addSimpleCheckTxtFromPaste, renderSimpleCheckFileList, removeSimpleCheckTxt, updateSimpleCheckSubmitBtn, copySimpleCheckAndOpenGemini, startSimpleCheckFromLanding, generateSimpleCheckPromptFromFiles, generateSimpleCheckPromptWithText, getNonJoyoCheckItemXml, generateSimpleCheckWithRulesPromptWithText, generateUnificationRulesXmlForCheck, generateSimpleCheckPrompt });

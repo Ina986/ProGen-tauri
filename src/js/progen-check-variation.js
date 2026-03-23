@@ -2,6 +2,7 @@
    詳細チェック機能（項目1〜8）
    ========================================= */
 import { state } from './progen-state.js';
+import { buildTxtFileFromPaste, clearTxtPasteFields } from './progen-note-txt.js';
 let variationCheckTxtFiles = []; // 詳細チェック用のTXTファイル
 
 // 詳細チェックモーダルを開く
@@ -45,6 +46,22 @@ function loadVariationCheckTxt(input) {
     });
 
     input.value = '';
+}
+
+function addVariationCheckTxtFromPaste() {
+    const fileInfo = buildTxtFileFromPaste(
+        document.getElementById('variationCheckPasteName')?.value,
+        document.getElementById('variationCheckPasteText')?.value
+    );
+    if (!fileInfo) {
+        showToast('貼り付けるテキストを入力してください', 'warning');
+        return;
+    }
+
+    variationCheckTxtFiles.push(fileInfo);
+    renderVariationCheckFileList();
+    updateVariationCheckSubmitBtn();
+    clearTxtPasteFields('variationCheckPasteName', 'variationCheckPasteText');
 }
 
 // 詳細チェック用ファイルリスト描画
@@ -507,7 +524,7 @@ ${manuscriptText}
 
 
 // ES Module exports
-export { openVariationCheckModal, closeVariationCheckModal, loadVariationCheckTxt, renderVariationCheckFileList, removeVariationCheckTxt, updateVariationCheckSubmitBtn, copyVariationCheckAndOpenGemini, startVariationCheckFromLanding, generateVariationCheckPromptFromFiles, generateVariationCheckPromptWithText };
+export { openVariationCheckModal, closeVariationCheckModal, loadVariationCheckTxt, addVariationCheckTxtFromPaste, renderVariationCheckFileList, removeVariationCheckTxt, updateVariationCheckSubmitBtn, copyVariationCheckAndOpenGemini, startVariationCheckFromLanding, generateVariationCheckPromptFromFiles, generateVariationCheckPromptWithText };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { openVariationCheckModal, closeVariationCheckModal, loadVariationCheckTxt, renderVariationCheckFileList, removeVariationCheckTxt, updateVariationCheckSubmitBtn, copyVariationCheckAndOpenGemini, startVariationCheckFromLanding, generateVariationCheckPromptFromFiles, generateVariationCheckPromptWithText });
+Object.assign(window, { openVariationCheckModal, closeVariationCheckModal, loadVariationCheckTxt, addVariationCheckTxtFromPaste, renderVariationCheckFileList, removeVariationCheckTxt, updateVariationCheckSubmitBtn, copyVariationCheckAndOpenGemini, startVariationCheckFromLanding, generateVariationCheckPromptFromFiles, generateVariationCheckPromptWithText });

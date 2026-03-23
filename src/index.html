@@ -566,6 +566,16 @@
                     すべてクリア
                 </button>
             </div>
+            <div class="txt-paste-panel">
+                <label class="txt-paste-label" for="txtManagePasteName">貼り付けテキスト名</label>
+                <input id="txtManagePasteName" class="txt-paste-name" type="text" placeholder="例: 貼り付けテキスト.txt">
+                <label class="txt-paste-label" for="txtManagePasteText">テキスト</label>
+                <textarea id="txtManagePasteText" class="txt-paste-textarea" placeholder="抽出プロンプト用のセリフテキストを貼り付け"></textarea>
+                <div class="txt-paste-actions">
+                    <button class="btn btn-orange" onclick="addManuscriptTxtFromPaste()">追加</button>
+                    <button class="btn btn-gray" onclick="clearTxtPasteFields('txtManagePasteName', 'txtManagePasteText')">クリア</button>
+                </div>
+            </div>
             <div class="txt-file-list" id="txtFileList">
                 <p style="color:#999; text-align:center;">読み込まれたファイルはありません</p>
             </div>
@@ -597,6 +607,16 @@
                 <button class="btn btn-red" onclick="clearAllProofreadingTxt()" style="margin-left:10px;">
                     すべてクリア
                 </button>
+            </div>
+            <div class="txt-paste-panel">
+                <label class="txt-paste-label" for="proofreadingPasteName">貼り付けテキスト名</label>
+                <input id="proofreadingPasteName" class="txt-paste-name" type="text" placeholder="例: 貼り付けテキスト.txt">
+                <label class="txt-paste-label" for="proofreadingPasteText">テキスト</label>
+                <textarea id="proofreadingPasteText" class="txt-paste-textarea" placeholder="校正プロンプト用のセリフテキストを貼り付け"></textarea>
+                <div class="txt-paste-actions">
+                    <button class="btn btn-orange" onclick="addProofreadingTxtFromPaste()">追加</button>
+                    <button class="btn btn-gray" onclick="clearTxtPasteFields('proofreadingPasteName', 'proofreadingPasteText')">クリア</button>
+                </div>
             </div>
             <div class="txt-file-list" id="proofreadingTxtFileList">
                 <p style="color:#999; text-align:center;">読み込まれたファイルはありません</p>
@@ -662,6 +682,16 @@
                     <span id="variationCheckTxtStatus" style="color:#666;"></span>
                 </div>
             </div>
+            <div class="txt-paste-panel">
+                <label class="txt-paste-label" for="variationCheckPasteName">貼り付けテキスト名</label>
+                <input id="variationCheckPasteName" class="txt-paste-name" type="text" placeholder="例: 貼り付けテキスト.txt">
+                <label class="txt-paste-label" for="variationCheckPasteText">テキスト</label>
+                <textarea id="variationCheckPasteText" class="txt-paste-textarea" placeholder="詳細チェック用のセリフテキストを貼り付け"></textarea>
+                <div class="txt-paste-actions">
+                    <button class="btn btn-orange" onclick="addVariationCheckTxtFromPaste()">追加</button>
+                    <button class="btn btn-gray" onclick="clearTxtPasteFields('variationCheckPasteName', 'variationCheckPasteText')">クリア</button>
+                </div>
+            </div>
             <div class="txt-file-list" id="variationCheckFileList" style="max-height:150px;">
                 <p style="color:#999; text-align:center; padding:15px;">ファイルが選択されていません</p>
             </div>
@@ -706,6 +736,16 @@
                     </button>
                     <input type="file" id="simpleCheckTxtFile" style="display:none" accept=".txt" multiple onchange="loadSimpleCheckTxt(this)">
                     <span id="simpleCheckTxtStatus" style="color:#666;"></span>
+                </div>
+            </div>
+            <div class="txt-paste-panel">
+                <label class="txt-paste-label" for="simpleCheckPasteName">貼り付けテキスト名</label>
+                <input id="simpleCheckPasteName" class="txt-paste-name" type="text" placeholder="例: 貼り付けテキスト.txt">
+                <label class="txt-paste-label" for="simpleCheckPasteText">テキスト</label>
+                <textarea id="simpleCheckPasteText" class="txt-paste-textarea" placeholder="簡易チェック用のセリフテキストを貼り付け"></textarea>
+                <div class="txt-paste-actions">
+                    <button class="btn btn-orange" onclick="addSimpleCheckTxtFromPaste()">追加</button>
+                    <button class="btn btn-gray" onclick="clearTxtPasteFields('simpleCheckPasteName', 'simpleCheckPasteText')">クリア</button>
                 </div>
             </div>
             <div class="txt-file-list" id="simpleCheckFileList" style="max-height:150px;">
@@ -831,6 +871,16 @@
                 <span class="txt-source-btn-text">Gドライブから選択</span>
             </button>
         </div>
+        <div class="txt-paste-panel">
+            <label class="txt-paste-label" for="txtSourcePasteName">貼り付けテキスト名</label>
+            <input id="txtSourcePasteName" class="txt-paste-name" type="text" placeholder="例: 貼り付けテキスト.txt">
+            <label class="txt-paste-label" for="txtSourcePasteText">テキスト</label>
+            <textarea id="txtSourcePasteText" class="txt-paste-textarea" placeholder="ここにセリフテキストを貼り付けて読み込みます"></textarea>
+            <div class="txt-paste-actions">
+                <button class="btn btn-orange" onclick="loadProofreadingTextFromPaste()">読み込み</button>
+                <button class="btn btn-gray" onclick="clearTxtPasteFields('txtSourcePasteName', 'txtSourcePasteText')">クリア</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -851,6 +901,10 @@
                 <button class="btn" onclick="openTxtAddFolderBrowser()" style="padding:15px; font-size:1em; background:var(--sage); color:white; border:none; border-radius:6px; cursor:pointer;">
                     <span style="font-size:1.2em;">📁</span> Gドライブから選択
                     <span style="display:block; font-size:0.8em; color:rgba(255,255,255,0.8); margin-top:4px;">写植・校正用テキストログ</span>
+                </button>
+                <button class="btn" onclick="selectTxtAddSourcePaste()" style="padding:15px; font-size:1em; background:var(--sunset); color:white; border:none; border-radius:6px; cursor:pointer;">
+                    <span style="font-size:1.2em;">貼</span> コピペから追加
+                    <span style="display:block; font-size:0.8em; color:rgba(255,255,255,0.85); margin-top:4px;">管理モーダル内の貼り付け欄へ移動します</span>
                 </button>
             </div>
         </div>

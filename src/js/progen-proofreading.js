@@ -2,6 +2,7 @@
    校正専用ページ
    ========================================= */
 import { state } from './progen-state.js';
+import { buildTxtFileFromPaste, clearTxtPasteFields } from './progen-note-txt.js';
 // [moved to state] proofreadingFiles
 // [moved to state] proofreadingContent
 // [moved to state] currentProofreadingMode
@@ -330,6 +331,27 @@ function loadProofreadingFiles(input) {
     input.value = '';
 }
 
+function loadProofreadingTextFromPaste() {
+    const fileInfo = buildTxtFileFromPaste(
+        document.getElementById('txtSourcePasteName')?.value,
+        document.getElementById('txtSourcePasteText')?.value
+    );
+    if (!fileInfo) {
+        showToast('貼り付けるテキストを入力してください', 'warning');
+        return;
+    }
+
+    state.proofreadingFiles = state.proofreadingFiles.concat([fileInfo]);
+    state.proofreadingContent = state.proofreadingFiles.map(f => f.content).join('\n\n--- 谺｡縺ｮ繝輔ぃ繧､繝ｫ ---\n\n');
+    renderProofreadingFileList();
+    const detectedLines = detectNonJoyoLinesWithPageInfo(state.proofreadingFiles);
+    state.proofreadingDetectedNonJoyoWords = detectedLines;
+    showNonJoyoResultPopup(detectedLines, true);
+    updateProofreadingPrompt();
+    clearTxtPasteFields('txtSourcePasteName', 'txtSourcePasteText');
+    window.closeTxtSourceSelectModal();
+}
+
 // 校正用ファイルリスト描画
 function renderProofreadingFileList() {
     const statusEl = document.getElementById('proofreadingFileStatus');
@@ -442,6 +464,27 @@ function addProofreadingTxt(input) {
     });
 
     input.value = '';
+}
+
+function addProofreadingTxtFromPaste() {
+    const fileInfo = buildTxtFileFromPaste(
+        document.getElementById('proofreadingPasteName')?.value,
+        document.getElementById('proofreadingPasteText')?.value
+    );
+    if (!fileInfo) {
+        showToast('貼り付けるテキストを入力してください', 'warning');
+        return;
+    }
+
+    state.proofreadingFiles = state.proofreadingFiles.concat([fileInfo]);
+    state.proofreadingContent = state.proofreadingFiles.map(f => f.content).join('\n\n--- 谺｡縺ｮ繝輔ぃ繧､繝ｫ ---\n\n');
+    renderProofreadingFileList();
+    renderProofreadingTxtFileList();
+    const detectedLines = detectNonJoyoLinesWithPageInfo(state.proofreadingFiles);
+    state.proofreadingDetectedNonJoyoWords = detectedLines;
+    showNonJoyoResultPopup(detectedLines, true);
+    updateProofreadingPrompt();
+    clearTxtPasteFields('proofreadingPasteName', 'proofreadingPasteText');
 }
 
 // 校正用TXTファイル個別削除（モーダルから）
@@ -663,7 +706,7 @@ document.addEventListener('click', function(e) {
 
 
 // ES Module exports
-export { showProofreadingPage, goToProofreadingPage, goToHomeFromProofreading, goToExtractionFromProofreading, changeProofreadingLabel, loadLabelRulesForProofreading, goToProofreadingPageFromMain, switchProofreadingMode, loadProofreadingFiles, renderProofreadingFileList, removeProofreadingFile, clearProofreadingFiles, openProofreadingTxtManageModal, closeProofreadingTxtManageModal, renderProofreadingTxtFileList, addProofreadingTxt, removeProofreadingTxtFile, clearAllProofreadingTxt, updateProofreadingPrompt, updateProofreadingCheckItems, updateProofreadingOptionsLabel, copyProofreadingPrompt, copyAndOpenGeminiForProofreading, toggleAddForm, toggleSymbolForm };
+export { showProofreadingPage, goToProofreadingPage, goToHomeFromProofreading, goToExtractionFromProofreading, changeProofreadingLabel, loadLabelRulesForProofreading, goToProofreadingPageFromMain, switchProofreadingMode, loadProofreadingFiles, loadProofreadingTextFromPaste, renderProofreadingFileList, removeProofreadingFile, clearProofreadingFiles, openProofreadingTxtManageModal, closeProofreadingTxtManageModal, renderProofreadingTxtFileList, addProofreadingTxt, addProofreadingTxtFromPaste, removeProofreadingTxtFile, clearAllProofreadingTxt, updateProofreadingPrompt, updateProofreadingCheckItems, updateProofreadingOptionsLabel, copyProofreadingPrompt, copyAndOpenGeminiForProofreading, toggleAddForm, toggleSymbolForm };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { showProofreadingPage, goToProofreadingPage, goToHomeFromProofreading, goToExtractionFromProofreading, changeProofreadingLabel, loadLabelRulesForProofreading, goToProofreadingPageFromMain, switchProofreadingMode, loadProofreadingFiles, renderProofreadingFileList, removeProofreadingFile, clearProofreadingFiles, openProofreadingTxtManageModal, closeProofreadingTxtManageModal, renderProofreadingTxtFileList, addProofreadingTxt, removeProofreadingTxtFile, clearAllProofreadingTxt, updateProofreadingPrompt, updateProofreadingCheckItems, updateProofreadingOptionsLabel, copyProofreadingPrompt, copyAndOpenGeminiForProofreading, toggleAddForm, toggleSymbolForm });
+Object.assign(window, { showProofreadingPage, goToProofreadingPage, goToHomeFromProofreading, goToExtractionFromProofreading, changeProofreadingLabel, loadLabelRulesForProofreading, goToProofreadingPageFromMain, switchProofreadingMode, loadProofreadingFiles, loadProofreadingTextFromPaste, renderProofreadingFileList, removeProofreadingFile, clearProofreadingFiles, openProofreadingTxtManageModal, closeProofreadingTxtManageModal, renderProofreadingTxtFileList, addProofreadingTxt, addProofreadingTxtFromPaste, removeProofreadingTxtFile, clearAllProofreadingTxt, updateProofreadingPrompt, updateProofreadingCheckItems, updateProofreadingOptionsLabel, copyProofreadingPrompt, copyAndOpenGeminiForProofreading, toggleAddForm, toggleSymbolForm });

@@ -148,8 +148,8 @@ function cpApplySerifFile(file) {
     }
     cpText = file.content;
     cpSavedText = cpText;
-    cpFilePath = '';
-    cpFileName = file.name;
+    cpFilePath = file.path || '';
+    cpFileName = file.name && /\.txt$/i.test(file.name) ? file.name : ((file.name || '貼り付けテキスト') + '.txt');
     cpComicPotHeader = cpExtractComicPotHeader(cpText);
     cpChunks = cpParseTextToChunks(cpText);
     cpSelectedChunkIndex = null;

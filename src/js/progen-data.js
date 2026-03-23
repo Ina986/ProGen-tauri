@@ -2,6 +2,7 @@
    データ定義
    ========================================= */
 import { state, defaultSymbolRules } from './progen-state.js';
+import { buildTxtFileFromPaste, clearTxtPasteFields } from './progen-note-txt.js';
 // カテゴリ定義
 const categories = {
     basic: { name: "基本的に表記変更されるもの", color: "#3498db" },
@@ -317,6 +318,27 @@ function loadManuscriptTxt(input) {
 // セリフTXTファイルを追加（管理モーダルから）
 function addManuscriptTxt(input) {
     loadManuscriptTxt(input);
+}
+
+function addManuscriptTxtFromPaste() {
+    const fileInfo = buildTxtFileFromPaste(
+        document.getElementById('txtManagePasteName')?.value,
+        document.getElementById('txtManagePasteText')?.value
+    );
+    if (!fileInfo) {
+        showToast('貼り付けるテキストを入力してください', 'warning');
+        return;
+    }
+
+    state.manuscriptTxtFiles.push(fileInfo);
+    updateTxtUploadStatus();
+    updateNonJoyoDetection();
+    renderTxtFileList();
+    generateXML();
+    hideTxtGuide();
+    const geminiBtn = document.getElementById('extractionGeminiBtn');
+    if (geminiBtn) geminiBtn.removeAttribute('disabled');
+    clearTxtPasteFields('txtManagePasteName', 'txtManagePasteText');
 }
 
 // 常用外漢字検出結果を更新
@@ -793,7 +815,7 @@ function _isElementVisible(el) {
 }
 
 // ES Module exports
-export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
+export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, addManuscriptTxtFromPaste, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });
+Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, addManuscriptTxtFromPaste, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });
