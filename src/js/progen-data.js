@@ -341,6 +341,89 @@ function addManuscriptTxtFromPaste() {
     clearTxtPasteFields('txtManagePasteName', 'txtManagePasteText');
 }
 
+function getExtractionSerifPasteDefaultName() {
+    const now = new Date();
+    const pad = (value) => String(value).padStart(2, '0');
+    const timestamp = [
+        now.getFullYear(),
+        pad(now.getMonth() + 1),
+        pad(now.getDate())
+    ].join('') + '_' + [pad(now.getHours()), pad(now.getMinutes())].join('');
+    return `gemini_extracted_${timestamp}.txt`;
+}
+
+function openExtractionSerifPasteModal() {
+    const modal = document.getElementById('extractionSerifPasteModal');
+    if (!modal) return;
+
+    const nameEl = document.getElementById('extractionSerifPasteName');
+    const textEl = document.getElementById('extractionSerifPasteText');
+
+    if (nameEl && !nameEl.value.trim()) {
+        nameEl.value = getExtractionSerifPasteDefaultName();
+    }
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+        if (textEl) textEl.focus();
+    }, 0);
+}
+
+function closeExtractionSerifPasteModal() {
+    const modal = document.getElementById('extractionSerifPasteModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function clearExtractionSerifPasteFields() {
+    clearTxtPasteFields('extractionSerifPasteName', 'extractionSerifPasteText');
+    const nameEl = document.getElementById('extractionSerifPasteName');
+    if (nameEl) nameEl.value = getExtractionSerifPasteDefaultName();
+}
+
+function loadExtractionSerifTextFromPasteCore(openEditor = false) {
+    const nameEl = document.getElementById('extractionSerifPasteName');
+    const textEl = document.getElementById('extractionSerifPasteText');
+    const fileInfo = buildTxtFileFromPaste(
+        nameEl?.value,
+        textEl?.value,
+        getExtractionSerifPasteDefaultName()
+    );
+
+    if (!fileInfo) {
+        showToast('貼り付けるセリフテキストを入力してください', 'warning');
+        return false;
+    }
+
+    state.manuscriptTxtFiles.push(fileInfo);
+    updateTxtUploadStatus();
+    updateNonJoyoDetection();
+    renderTxtFileList();
+    generateXML();
+    hideTxtGuide();
+
+    const geminiBtn = document.getElementById('extractionGeminiBtn');
+    if (geminiBtn) geminiBtn.removeAttribute('disabled');
+
+    clearExtractionSerifPasteFields();
+    closeExtractionSerifPasteModal();
+
+    if (openEditor) {
+        window.goToComicPotEditor('extraction');
+    } else {
+        showToast(`「${fileInfo.name}」を読み込みました`, 'success');
+    }
+
+    return true;
+}
+
+function loadExtractionSerifTextFromPaste() {
+    return loadExtractionSerifTextFromPasteCore(false);
+}
+
+function loadExtractionSerifTextFromPasteAndOpenEditor() {
+    return loadExtractionSerifTextFromPasteCore(true);
+}
+
 // 常用外漢字検出結果を更新
 function updateNonJoyoDetection() {
     if (state.manuscriptTxtFiles.length === 0) {
@@ -815,7 +898,7 @@ function _isElementVisible(el) {
 }
 
 // ES Module exports
-export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, addManuscriptTxtFromPaste, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
+export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, addManuscriptTxtFromPaste, openExtractionSerifPasteModal, closeExtractionSerifPasteModal, clearExtractionSerifPasteFields, loadExtractionSerifTextFromPaste, loadExtractionSerifTextFromPasteAndOpenEditor, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, addManuscriptTxtFromPaste, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });
+Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, addManuscriptTxtFromPaste, openExtractionSerifPasteModal, closeExtractionSerifPasteModal, clearExtractionSerifPasteFields, loadExtractionSerifTextFromPaste, loadExtractionSerifTextFromPasteAndOpenEditor, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });

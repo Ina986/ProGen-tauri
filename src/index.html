@@ -588,6 +588,29 @@
 </div>
 
 <!-- 校正ページ用セリフTXT管理モーダル -->
+<!-- 抽出プロンプト用 セリフ貼り付けモーダル -->
+<div id="extractionSerifPasteModal" class="txt-guide-overlay" style="display:none;">
+    <div class="txt-guide-card extraction-serif-paste-modal">
+        <button class="txt-guide-close" onclick="closeExtractionSerifPasteModal()">✕</button>
+        <div class="txt-guide-icon-large">
+            <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg></span>
+        </div>
+        <h3 class="txt-guide-title">GeminiからセリフTXTを読み込み</h3>
+        <p class="txt-guide-desc extraction-serif-paste-desc">Geminiで抽出・整形したセリフテキストをここに貼り付けると、抽出プロンプト用のセリフTXTとして読み込みます。</p>
+        <div class="txt-paste-panel extraction-serif-paste-panel">
+            <label class="txt-paste-label" for="extractionSerifPasteName">貼り付けテキスト名</label>
+            <input id="extractionSerifPasteName" class="txt-paste-name" type="text" placeholder="例: gemini_extracted_20260323_1030.txt">
+            <label class="txt-paste-label" for="extractionSerifPasteText">テキスト</label>
+            <textarea id="extractionSerifPasteText" class="txt-paste-textarea extraction-serif-paste-textarea" placeholder="Geminiで抽出したセリフテキストをここに貼り付け"></textarea>
+            <div class="txt-paste-actions">
+                <button class="btn btn-orange" onclick="loadExtractionSerifTextFromPaste()">読み込み</button>
+                <button class="btn btn-comicpot" onclick="loadExtractionSerifTextFromPasteAndOpenEditor()">読み込んでテキストエディタへ</button>
+                <button class="btn btn-gray" onclick="clearExtractionSerifPasteFields()">クリア</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div id="proofreadingTxtManageModal" class="modal-overlay">
     <div class="modal-content" style="max-width:600px;">
         <div class="modal-header" >

@@ -2817,7 +2817,7 @@ dependencies = [
 
 [[package]]
 name = "progen"
-version = "1.8.4"
+version = "1.8.10"
 dependencies = [
  "base64 0.22.1",
  "image",

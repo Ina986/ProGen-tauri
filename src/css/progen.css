@@ -5711,6 +5711,23 @@ tr.inactive td {
     color: var(--text);
 }
 
+.extraction-serif-paste-modal {
+    max-width: 560px;
+}
+
+.extraction-serif-paste-desc {
+    margin-bottom: 18px;
+}
+
+.extraction-serif-paste-panel {
+    margin-bottom: 0;
+    text-align: left;
+}
+
+.extraction-serif-paste-textarea {
+    min-height: 220px;
+}
+
 /* 抽出プロンプトモードのGeminiボタン disabled状態 */
 #extractionGeminiBtn:disabled {
     opacity: 0.5;

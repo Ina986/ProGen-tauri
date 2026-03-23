@@ -678,6 +678,9 @@ function copyAndOpenGemini() {
     });
     // Geminiを新しいタブで開く（クリップボード操作に依存しない）
     window.open('https://gemini.google.com/app', '_blank');
+    if (window.openExtractionSerifPasteModal) {
+        window.openExtractionSerifPasteModal();
+    }
 }
 
 
