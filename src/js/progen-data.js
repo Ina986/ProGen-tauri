@@ -300,6 +300,7 @@ function loadManuscriptTxt(input) {
             loadedCount++;
             if (loadedCount === totalFiles) {
                 updateTxtUploadStatus();
+                renderTxtFileList();
                 generateXML();
                 hideTxtGuide(); // ファイル読み込み後はガイドを非表示
 
@@ -308,6 +309,12 @@ function loadManuscriptTxt(input) {
                 if (geminiBtn) {
                     geminiBtn.removeAttribute('disabled');
                 }
+
+                const firstName = files[0]?.name || 'TXT';
+                const message = totalFiles === 1
+                    ? `「${firstName}」を読み込みました`
+                    : `${totalFiles}件のTXTを読み込みました`;
+                showToast(message, 'success');
             }
         };
         reader.readAsText(file, 'UTF-8');
@@ -331,7 +338,6 @@ function addManuscriptTxtFromPaste() {
         showToast('貼り付けるテキストを入力してください', 'warning');
         return;
     }
-
     state.manuscriptTxtFiles.push(fileInfo);
     updateTxtUploadStatus();
     updateNonJoyoDetection();
@@ -382,7 +388,30 @@ function clearExtractionSerifPasteFields() {
     if (nameEl) nameEl.value = getExtractionSerifPasteDefaultName();
 }
 
-function loadExtractionSerifTextFromPasteCore(openEditor = false) {
+async function saveExtractionSerifPasteAsTxt(fileInfo) {
+    if (!window.electronAPI || typeof window.electronAPI.showSaveTextDialog !== 'function' || typeof window.electronAPI.writeTextFile !== 'function') {
+        showToast('TXT保存機能を利用できません', 'error');
+        return null;
+    }
+
+    const dialogResult = await window.electronAPI.showSaveTextDialog(fileInfo.name);
+    if (!dialogResult?.success || !dialogResult.filePath) {
+        return null;
+    }
+
+    const saveResult = await window.electronAPI.writeTextFile(dialogResult.filePath, fileInfo.content);
+    if (!saveResult?.success) {
+        showToast('TXTの保存に失敗しました', 'error');
+        return null;
+    }
+
+    fileInfo.path = dialogResult.filePath;
+    const parts = dialogResult.filePath.replace(/\\/g, '/').split('/');
+    fileInfo.name = parts[parts.length - 1] || fileInfo.name;
+    return fileInfo;
+}
+
+async function loadExtractionSerifTextFromPasteCore(openEditor = false) {
     const nameEl = document.getElementById('extractionSerifPasteName');
     const textEl = document.getElementById('extractionSerifPasteText');
     const fileInfo = buildTxtFileFromPaste(
@@ -390,31 +419,32 @@ function loadExtractionSerifTextFromPasteCore(openEditor = false) {
         textEl?.value,
         getExtractionSerifPasteDefaultName()
     );
-
     if (!fileInfo) {
-        showToast('貼り付けるセリフテキストを入力してください', 'warning');
+        showToast('セリフテキストを入力してください', 'warning');
         return false;
     }
-
-    state.manuscriptTxtFiles.push(fileInfo);
+    const savedFileInfo = await saveExtractionSerifPasteAsTxt(fileInfo);
+    if (!savedFileInfo) {
+        return false;
+    }
+    state.manuscriptTxtFiles.push(savedFileInfo);
     updateTxtUploadStatus();
     updateNonJoyoDetection();
     renderTxtFileList();
     generateXML();
     hideTxtGuide();
-
     const geminiBtn = document.getElementById('extractionGeminiBtn');
     if (geminiBtn) geminiBtn.removeAttribute('disabled');
-
     clearExtractionSerifPasteFields();
     closeExtractionSerifPasteModal();
-
     if (openEditor) {
         window.goToComicPotEditor('extraction');
+        if (typeof window.cpApplySerifFile === 'function') {
+            window.cpApplySerifFile(savedFileInfo);
+        }
     } else {
-        showToast(`「${fileInfo.name}」を読み込みました`, 'success');
+        showToast(`「${savedFileInfo.name}」を読み込みました`, 'success');
     }
-
     return true;
 }
 
@@ -597,7 +627,7 @@ function updateTxtUploadStatus() {
         statusEl.textContent = '';
         if (manageBtn) manageBtn.style.display = 'none';
     } else {
-        statusEl.textContent = '✓';
+        statusEl.textContent = `${state.manuscriptTxtFiles.length}件読み込み済み`;
         statusEl.style.color = '#27ae60';
         if (manageBtn) manageBtn.style.display = 'inline-block';
     }
