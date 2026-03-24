@@ -313,7 +313,7 @@
                     <button class="data-type-option" data-value="txt_only" onclick="selectDataType('txt_only')" disabled>TXT</button>
                 </div>
                 <div id="txtUploadGroup" style="display:none; align-items:center; gap:6px;">
-                    <button class="btn btn-action-tool btn-sm" onclick="document.getElementById('txtUploadFile').click()"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg></span> TXT読込</button>
+                    <button class="btn btn-action-tool btn-sm" onclick="openTxtManageModal()"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg></span> TXT読込</button>
                     <input type="file" id="txtUploadFile" style="display:none" accept=".txt" multiple onchange="loadManuscriptTxt(this)">
                     <span id="txtUploadStatus" style="font-size:0.78em; color:var(--text-dim);"></span>
                     <button id="txtManageBtn" class="btn btn-gray" style="display:none; padding:3px 6px; font-size:0.75em;" onclick="openTxtManageModal()">管理</button>

@@ -279,6 +279,7 @@ function detectNonJoyoLinesWithPageInfo(files) {
 // [moved to state] detectedNonJoyoWords
 // [moved to state] manuscriptTxtFiles
 // [moved to state] txtGuideDismissed
+let txtManageAutoOpened = false;
 function loadManuscriptTxt(input) {
     const files = input.files;
     if (!files || files.length === 0) return;
@@ -602,13 +603,18 @@ function updateTxtUploadStatus() {
 }
 
 // TXT管理モーダルを開く
-function openTxtManageModal() {
+function openTxtManageModal(autoOpened = false) {
+    txtManageAutoOpened = autoOpened;
     renderTxtFileList();
     document.getElementById('txtManageModal').style.display = 'flex';
 }
 
 // TXT管理モーダルを閉じる
 function closeTxtManageModal() {
+    if (txtManageAutoOpened && state.manuscriptTxtFiles.length === 0) {
+        state.txtGuideDismissed = true;
+    }
+    txtManageAutoOpened = false;
     document.getElementById('txtManageModal').style.display = 'none';
 }
 
@@ -831,25 +837,21 @@ document.addEventListener('click', function(e) {
 // TXT読み込みガイドの表示
 function showTxtGuide() {
     const guideEl = document.getElementById('txtGuideNotification');
-    if (guideEl) guideEl.style.display = 'flex';
-
-    // ドロップゾーンの初期化（初回のみ）
-    const dropZone = document.getElementById('txtGuideDropZone');
-    if (dropZone && !dropZone._dropZoneInitialized) {
-        setupDropZone(dropZone, loadManuscriptTxt);
-        dropZone._dropZoneInitialized = true;
-    }
+    if (guideEl) guideEl.style.display = 'none';
+    openTxtManageModal(true);
 }
 
 // TXT読み込みガイドの非表示
 function hideTxtGuide() {
     const guideEl = document.getElementById('txtGuideNotification');
     if (guideEl) guideEl.style.display = 'none';
+    txtManageAutoOpened = false;
 }
 
 // TXT読み込みガイドを閉じる（ユーザー操作）
 function dismissTxtGuide() {
     state.txtGuideDismissed = true;
+    closeTxtManageModal();
     hideTxtGuide();
 }
 
