@@ -168,7 +168,8 @@ function renderEditCardMode() {
         // ルール数カウント
         let activeCount, totalCount;
         if (cat.isNumber) {
-            activeCount = state.numberSubRulesEnabled ? 4 : 1;
+            const disableNumberSubRules = !state.numberSubRulesEnabled || state.numberRuleBase === numberBaseOptions.length - 1;
+            activeCount = disableNumberSubRules ? 1 : 4;
             totalCount = 4;
         } else {
             let rules;
@@ -489,6 +490,7 @@ function renderNumberMainContent(main, cat) {
     body.appendChild(toggleDiv);
 
     // 3つのサブルールカード
+    const disableNumberSubRules = !state.numberSubRulesEnabled || state.numberRuleBase === numberBaseOptions.length - 1;
     Object.keys(numberSubRules).forEach(key => {
         const sub = numberSubRules[key];
         let currentVal;
@@ -498,7 +500,7 @@ function renderNumberMainContent(main, cat) {
 
         const card = document.createElement('div');
         card.className = 'number-card';
-        if (!state.numberSubRulesEnabled) {
+        if (disableNumberSubRules) {
             card.style.opacity = '0.4';
             card.style.pointerEvents = 'none';
         }
@@ -988,7 +990,7 @@ function renderSpecSheetTable() {
     // === 数字サブルール ===
     const numSubItems = [];
     numSubItems.push({ name: '基本ルール', value: numberBaseOptions[state.numberRuleBase] || numberBaseOptions[0] });
-    if (state.numberSubRulesEnabled) {
+    if (state.numberSubRulesEnabled && state.numberRuleBase !== numberBaseOptions.length - 1) {
         if (typeof state.numberRulePersonCount !== 'undefined' && numberSubRules.personCount) {
             numSubItems.push({ name: numberSubRules.personCount.name, value: numberSubRules.personCount.options[state.numberRulePersonCount] || '' });
         }

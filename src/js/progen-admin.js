@@ -464,6 +464,7 @@ function adminRenderNumberMainContent(main, cat) {
     body.appendChild(baseBanner);
 
     // 3つのサブルールカード
+    const disableNumberSubRules = adminOptions.state.numberRuleBase === numberBaseOptions.length - 1;
     Object.keys(numberSubRules).forEach(key => {
         const sub = numberSubRules[key];
         let currentVal;
@@ -473,6 +474,10 @@ function adminRenderNumberMainContent(main, cat) {
 
         const card = document.createElement('div');
         card.className = 'number-card';
+        if (disableNumberSubRules) {
+            card.style.opacity = '0.4';
+            card.style.pointerEvents = 'none';
+        }
 
         const top = document.createElement('div');
         top.className = 'number-card-top';

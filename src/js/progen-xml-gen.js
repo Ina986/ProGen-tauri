@@ -38,8 +38,11 @@ function generateXML() {
             const personOpt = numberSubRules.personCount.options[state.numberRulePersonCount];
             const thingOpt = numberSubRules.thingCount.options[state.numberRuleThingCount];
             const monthOpt = numberSubRules.month.options[state.numberRuleMonth];
+            const isNumberRuleUnchanged = state.numberRuleBase === numberBaseOptions.length - 1;
             let baseInstruction;
-            if (state.numberRuleBase === 1) {
+            if (isNumberRuleUnchanged) {
+                baseInstruction = '数字の表記は変更しないでください。原文の数字表記をそのまま維持してください。';
+            } else if (state.numberRuleBase === 1) {
                 baseInstruction = 'すべてアラビア数字で統一して表記してください。';
             } else if (state.numberRuleBase === 2) {
                 baseInstruction = 'すべて漢数字で統一して表記してください。';
@@ -49,7 +52,7 @@ function generateXML() {
             rulesXML += `
             <group name="数字の表記">
                 <instruction>${escapeHtml(baseInstruction)}</instruction>`;
-            if (state.numberSubRulesEnabled) {
+            if (state.numberSubRulesEnabled && !isNumberRuleUnchanged) {
                 rulesXML += `
                 <sub_rule name="人数の表記">
                     <format>${escapeHtml(personOpt)}</format>
