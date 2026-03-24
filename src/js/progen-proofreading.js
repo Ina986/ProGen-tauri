@@ -513,12 +513,10 @@ function clearAllProofreadingTxt() {
 // プロンプト更新
 function updateProofreadingPrompt() {
     const outputEl = document.getElementById('proofreadingOutput');
-    const copyBtn = document.getElementById('proofreadingCopyBtn');
     const geminiBtn = document.getElementById('proofreadingGeminiBtn');
 
     if (state.proofreadingFiles.length === 0) {
         outputEl.value = '';
-        copyBtn.disabled = true;
         geminiBtn.disabled = true;
         return;
     }
@@ -533,7 +531,6 @@ function updateProofreadingPrompt() {
     }
 
     outputEl.value = prompt;
-    copyBtn.disabled = false;
     geminiBtn.disabled = false;
 }
 

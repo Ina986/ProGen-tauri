@@ -407,16 +407,13 @@
 
         <!-- 右カラム: プロンプト出力 -->
         <div class="proofreading-output-area">
-            <h3><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></span> 生成プロンプト</h3>
-            <textarea class="proofreading-output" id="proofreadingOutput" readonly placeholder="ファイルを読み込むとプロンプトが生成されます..."></textarea>
-            <div class="proofreading-output-actions">
-                <button class="proofreading-copy-btn" id="proofreadingCopyBtn" onclick="copyProofreadingPrompt()" disabled>
-                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></span> コピー
-                </button>
-                <button class="proofreading-gemini-btn" id="proofreadingGeminiBtn" onclick="copyAndOpenGeminiForProofreading()" disabled title="Geminiで開く">
-                    <img src="logo/gemini_logo.png" alt="Gemini" class="btn-icon-lg"> Geminiで開く
+            <div class="proofreading-output-header">
+                <h3><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></span> &#29983;&#25104;&#12503;&#12525;&#12531;&#12503;&#12488;</h3>
+                <button class="proofreading-gemini-btn proofreading-gemini-btn-inline" id="proofreadingGeminiBtn" onclick="copyAndOpenGeminiForProofreading()" disabled title="Gemini&#12391;&#38283;&#12367;">
+                    <img src="logo/gemini_logo.png" alt="Gemini" class="btn-icon-lg"> Gemini&#12391;&#38283;&#12367;
                 </button>
             </div>
+            <textarea class="proofreading-output" id="proofreadingOutput" readonly placeholder="&#12501;&#12449;&#12452;&#12523;&#12434;&#35501;&#12415;&#36796;&#12416;&#12392;&#12503;&#12525;&#12531;&#12503;&#12488;&#12364;&#29983;&#25104;&#12373;&#12428;&#12414;&#12377;..."></textarea>
         </div>
     </div>
 </div>

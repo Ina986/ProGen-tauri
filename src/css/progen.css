@@ -3399,6 +3399,18 @@ tr.inactive td {
     font-weight: 600;
 }
 
+.proofreading-output-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.proofreading-output-header h3 {
+    margin: 0;
+}
+
 .proofreading-output {
     flex: 1;
     width: 100%;
@@ -3459,6 +3471,13 @@ tr.inactive td {
     justify-content: center;
     gap: 8px;
     border: none;
+}
+
+.proofreading-gemini-btn-inline {
+    flex: 0 0 auto;
+    min-width: 180px;
+    padding: 10px 16px;
+    font-size: 0.9em;
 }
 
 .proofreading-gemini-btn::before {
