@@ -67,6 +67,16 @@ struct CalibrationParams {
     items: Vec<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RenameWorkParams {
+    #[serde(rename = "jsonFilePath")]
+    json_file_path: String,
+    #[serde(rename = "newTitle")]
+    new_title: String,
+    #[serde(rename = "txtLabel")]
+    txt_label: String,
+}
+
 // アプリ状態
 struct AppState {
     master_rule_file_map: Mutex<HashMap<String, LabelInfo>>,
@@ -101,6 +111,23 @@ fn generate_label_key(folder_name: &str) -> String {
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
         .collect()
+}
+
+fn sanitize_work_name(name: &str) -> String {
+    let trimmed = name.trim();
+    let sanitized: String = trimmed
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            _ => c,
+        })
+        .collect();
+    sanitized.trim().to_string()
+}
+
+fn write_json_value(file_path: &Path, data: &serde_json::Value) -> Result<(), String> {
+    let json_str = serde_json::to_string_pretty(data).map_err(|e| e.to_string())?;
+    fs::write(file_path, json_str).map_err(|e| e.to_string())
 }
 
 fn scan_master_json_folder() -> HashMap<String, LabelInfo> {
@@ -250,6 +277,134 @@ fn write_json_file(file_path: String, data: serde_json::Value) -> serde_json::Va
         },
         Err(e) => serde_json::json!({ "success": false, "error": e.to_string() }),
     }
+}
+
+#[tauri::command]
+fn rename_work_assets(params: RenameWorkParams) -> serde_json::Value {
+    let new_title = params.new_title.trim();
+    if new_title.is_empty() {
+        return serde_json::json!({ "success": false, "error": "作品名を入力してください" });
+    }
+
+    let json_file_path = PathBuf::from(&params.json_file_path);
+    if !json_file_path.exists() {
+        return serde_json::json!({ "success": false, "error": "対象のJSONファイルが見つかりません" });
+    }
+
+    let Some(parent_dir) = json_file_path.parent() else {
+        return serde_json::json!({ "success": false, "error": "JSONファイルの保存先を特定できません" });
+    };
+
+    let Some(old_stem) = json_file_path.file_stem().map(|v| v.to_string_lossy().to_string()) else {
+        return serde_json::json!({ "success": false, "error": "元の作品名を特定できません" });
+    };
+
+    let new_stem = sanitize_work_name(new_title);
+    if new_stem.is_empty() {
+        return serde_json::json!({ "success": false, "error": "有効な作品名を入力してください" });
+    }
+
+    let new_json_path = parent_dir.join(format!("{}.json", new_stem));
+    if new_json_path != json_file_path && new_json_path.exists() {
+        return serde_json::json!({ "success": false, "error": "同名のJSONファイルが既に存在します" });
+    }
+
+    let raw = match fs::read_to_string(&json_file_path) {
+        Ok(raw) => raw,
+        Err(e) => return serde_json::json!({ "success": false, "error": e.to_string() }),
+    };
+    let mut data: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(data) => data,
+        Err(e) => return serde_json::json!({ "success": false, "error": e.to_string() }),
+    };
+
+    if let Some(work_info) = data
+        .get_mut("presetData")
+        .and_then(|v| v.get_mut("workInfo"))
+        .and_then(|v| v.as_object_mut())
+    {
+        work_info.insert("title".to_string(), serde_json::Value::String(new_title.to_string()));
+    }
+    if let Some(root_obj) = data.as_object_mut() {
+        if root_obj.contains_key("title") {
+            root_obj.insert("title".to_string(), serde_json::Value::String(new_title.to_string()));
+        }
+        if root_obj.contains_key("work") {
+            root_obj.insert("work".to_string(), serde_json::Value::String(new_title.to_string()));
+        }
+    }
+
+    let old_txt_work_path = PathBuf::from(TXT_FOLDER_BASE_PATH)
+        .join(&params.txt_label)
+        .join(&old_stem);
+    let new_txt_work_path = PathBuf::from(TXT_FOLDER_BASE_PATH)
+        .join(&params.txt_label)
+        .join(&new_stem);
+
+    if old_txt_work_path.exists() {
+        if new_txt_work_path != old_txt_work_path && new_txt_work_path.exists() {
+            return serde_json::json!({ "success": false, "error": "同名の校正ログ作品フォルダが既に存在します" });
+        }
+
+        if new_txt_work_path != old_txt_work_path {
+            if let Err(e) = fs::rename(&old_txt_work_path, &new_txt_work_path) {
+                return serde_json::json!({ "success": false, "error": format!("校正ログ作品フォルダのリネームに失敗しました: {}", e) });
+            }
+        }
+
+        let calibration_dir = new_txt_work_path.join("校正チェックデータ");
+        if calibration_dir.exists() {
+            let entries = match fs::read_dir(&calibration_dir) {
+                Ok(entries) => entries,
+                Err(e) => {
+                    return serde_json::json!({ "success": false, "error": format!("校正チェックデータの読み込みに失敗しました: {}", e) });
+                }
+            };
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() || path.extension().and_then(|v| v.to_str()) != Some("json") {
+                    continue;
+                }
+
+                let raw = match fs::read_to_string(&path) {
+                    Ok(raw) => raw,
+                    Err(e) => {
+                        return serde_json::json!({ "success": false, "error": format!("校正チェックJSONの読み込みに失敗しました: {}", e) });
+                    }
+                };
+                let mut json_value: serde_json::Value = match serde_json::from_str(&raw) {
+                    Ok(value) => value,
+                    Err(e) => {
+                        return serde_json::json!({ "success": false, "error": format!("校正チェックJSONの解析に失敗しました: {}", e) });
+                    }
+                };
+
+                if let Some(obj) = json_value.as_object_mut() {
+                    obj.insert("work".to_string(), serde_json::Value::String(new_title.to_string()));
+                }
+
+                if let Err(error) = write_json_value(&path, &json_value) {
+                    return serde_json::json!({ "success": false, "error": format!("校正チェックJSONの保存に失敗しました: {}", error) });
+                }
+            }
+        }
+    }
+
+    if let Err(error) = write_json_value(&new_json_path, &data) {
+        return serde_json::json!({ "success": false, "error": format!("作品JSONの保存に失敗しました: {}", error) });
+    }
+
+    if new_json_path != json_file_path {
+        let _ = fs::remove_file(&json_file_path);
+    }
+
+    serde_json::json!({
+        "success": true,
+        "newFilePath": new_json_path.to_string_lossy(),
+        "newFileName": new_json_path.file_name().map(|v| v.to_string_lossy().to_string()).unwrap_or_default(),
+        "data": data
+    })
 }
 
 #[tauri::command]
@@ -1368,6 +1523,7 @@ pub fn run() {
             list_directory,
             read_json_file,
             write_json_file,
+            rename_work_assets,
             read_master_rule,
             write_master_rule,
             create_master_label,

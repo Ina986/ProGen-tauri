@@ -9,7 +9,7 @@ async function _ensurePdfJs() {
     if (pdfjsLib) return pdfjsLib;
     const mod = await import('./lib/pdf.min.mjs');
     pdfjsLib = mod;
-    pdfjsLib.GlobalWorkerOptions.workerSrc = './js/lib/pdf.worker.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('./lib/pdf.worker.min.mjs', import.meta.url).href;
     return pdfjsLib;
 }
 

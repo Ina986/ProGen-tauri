@@ -252,6 +252,7 @@
             <div class="header-save-group" id="actionBarSaveGroup" style="display:none;">
                 <button class="btn btn-action-save btn-sm" id="headerSaveToJsonBtn" onclick="saveProofRulesToJson()" style="display:none;"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> 保存</button>
                 <button class="btn btn-action-save-as btn-sm" id="headerSaveAsJsonBtn" onclick="saveProofRulesToNewJson()" style="display:none;">別名保存</button>
+                <button class="btn btn-gray btn-sm" id="headerRenameWorkBtn" onclick="renameCurrentWork()" style="display:none;">作品名変更</button>
             </div>
             <input type="hidden" id="dataTypeSelector" value="pdf_only">
             <div class="header-spacer"></div>
@@ -1424,8 +1425,8 @@
                                     <polyline points="21 15 16 10 5 21"/>
                                 </svg>
                             </div>
-                            <p class="cp-viewer-dropzone-title">画像ファイルをドロップ</p>
-                            <p class="cp-viewer-dropzone-sub">フォルダまたはファイルをドラッグ＆ドロップ</p>
+                            <p class="cp-viewer-dropzone-title">画像/PDFファイルをドロップ</p>
+                            <p class="cp-viewer-dropzone-sub">フォルダまたは画像・PDFファイルをドラッグ＆ドロップ</p>
                             <button class="cp-viewer-dropzone-btn" onclick="cpViewerOpenFolder()">
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                                 フォルダを開く

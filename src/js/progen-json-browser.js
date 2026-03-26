@@ -1176,6 +1176,76 @@ async function saveToNewJsonFile(newPath, newFileName) {
 }
 
 // JSONフォルダブラウザのイベントリスナー設定
+function getCurrentWorkTitleForRename() {
+    return state.currentLoadedJson?.presetData?.workInfo?.title
+        || state.currentLoadedJson?.title
+        || (state.currentJsonPath ? state.currentJsonPath.split(/[\\/]/).pop().replace(/\.json$/i, '') : '');
+}
+
+async function renameCurrentWork() {
+    if (!window.electronAPI || !window.electronAPI.isElectron) {
+        showToast('この機能はElectronアプリでのみ使用できます', 'error');
+        return;
+    }
+    if (!state.currentJsonPath || !state.currentLoadedJson) {
+        showToast('先に作品JSONを読み込んでください', 'warning');
+        return;
+    }
+
+    const currentTitle = getCurrentWorkTitleForRename();
+    const nextTitle = window.prompt('新しい作品名を入力してください', currentTitle || '');
+    if (nextTitle === null) return;
+
+    const trimmedTitle = nextTitle.trim();
+    if (!trimmedTitle) {
+        showToast('作品名を入力してください', 'warning');
+        return;
+    }
+    if (trimmedTitle === currentTitle.trim()) {
+        return;
+    }
+
+    const jsonLabel = state.currentLoadedJson?.presetData?.workInfo?.label
+        || document.getElementById('labelSelector')?.value
+        || '';
+    const txtLabel = (window.labelToTxtFolderMapping && window.labelToTxtFolderMapping[jsonLabel]) || jsonLabel;
+
+    try {
+        const result = await window.electronAPI.renameWorkAssets({
+            jsonFilePath: state.currentJsonPath,
+            newTitle: trimmedTitle,
+            txtLabel
+        });
+
+        if (!result.success) {
+            showToast('作品名変更に失敗しました: ' + (result.error || ''), 'error');
+            return;
+        }
+
+        state.currentJsonPath = result.newFilePath;
+        if (result.data) {
+            state.currentLoadedJson = result.data;
+        } else if (state.currentLoadedJson?.presetData?.workInfo) {
+            state.currentLoadedJson.presetData.workInfo.title = trimmedTitle;
+        }
+
+        const newFileName = result.newFileName || state.currentJsonPath.split(/[\\/]/).pop();
+        const jsonFilenameSpan = document.getElementById('loadedJsonFilename');
+        if (jsonFilenameSpan) jsonFilenameSpan.textContent = newFileName;
+        const proofJsonFilename = document.getElementById('proofreadingJsonFilename');
+        if (proofJsonFilename) proofJsonFilename.textContent = newFileName;
+
+        if (typeof updateHeaderSaveButtons === 'function') {
+            updateHeaderSaveButtons();
+        }
+
+        showToast(`作品名を「${trimmedTitle}」に変更しました`, 'success');
+    } catch (error) {
+        console.error('作品名変更エラー:', error);
+        showToast('作品名変更に失敗しました: ' + error.message, 'error');
+    }
+}
+
 function initJsonFolderBrowser() {
     const closeBtn = document.getElementById('jsonFolderBrowserCloseBtn');
     const cancelBtn = document.getElementById('jsonFolderBrowserCancelBtn');
@@ -1239,7 +1309,7 @@ function initJsonFolderBrowser() {
 
 
 // ES Module exports
-export { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser };
+export { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, renameCurrentWork, initJsonFolderBrowser };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser });
+Object.assign(window, { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, renameCurrentWork, initJsonFolderBrowser });

@@ -43,6 +43,7 @@
 
         // 校正テキストログ側に作品フォルダを作成
         createTxtWorkFolder: (label, work) => invoke('create_txt_work_folder', { label, work }),
+        renameWorkAssets: (params) => invoke('rename_work_assets', { params }),
 
         // TXTフォルダのベースパスを取得
         getTxtFolderPath: () => invoke('get_txt_folder_path'),
