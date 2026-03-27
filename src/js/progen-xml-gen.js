@@ -102,9 +102,9 @@ function generateXML() {
             if (rubyRules.length > 0) {
                 rulesXML += `
             <group name="難読漢字（ルビ用）">
-                <instruction>このグループのルールは置換ではなく、[親文字](ルビ) の形式で出力してください。</instruction>
+                <instruction>このグループのルールは置換ではなく、親文字（ルビ）の形式で出力してください。</instruction>
                 <instruction>ルビは各難読漢字の初出時のみ付けてください。2回目以降の出現時は親文字のみ（ルビなし）で出力してください。</instruction>
-                <example>初出：[嗚咽](おえつ)　→　2回目以降：嗚咽</example>`;
+                <example>初出：嗚咽（おえつ）　→　2回目以降：嗚咽</example>`;
                 rubyRules.forEach(r => {
                     const safeSrc = escapeHtml(r.src);
                     const safeDst = escapeHtml(r.dst);
@@ -112,7 +112,7 @@ function generateXML() {
                 <rule type="ruby">
                     <kanji>${safeSrc}</kanji>
                     <reading>${safeDst}</reading>
-                    <output_format>[${safeSrc}](${safeDst})</output_format>
+                    <output_format>${safeSrc}（${safeDst}）</output_format>
                 </rule>`;
                 });
                 rulesXML += `
@@ -132,9 +132,9 @@ function generateXML() {
 
             rulesXML += `
             <group name="${cat.name}">
-                <instruction>このグループのルールは置換ではなく、[親文字](ルビ) の形式で出力してください。</instruction>
+                <instruction>このグループのルールは置換ではなく、親文字（ルビ）の形式で出力してください。</instruction>
                 <instruction>ルビは各人物名の初出時のみ付けてください。2回目以降の出現時は親文字のみ（ルビなし）で出力してください。</instruction>
-                <example>初出：[田中](たなか)　→　2回目以降：田中</example>`;
+                <example>初出：田中（たなか）　→　2回目以降：田中</example>`;
 
             rubyCharacters.forEach(r => {
                 const safeSrc = escapeHtml(r.src);
@@ -143,7 +143,7 @@ function generateXML() {
                 <rule type="ruby">
                     <character>${safeSrc}</character>
                     <reading>${safeDst}</reading>
-                    <output_format>[${safeSrc}](${safeDst})</output_format>
+                    <output_format>${safeSrc}（${safeDst}）</output_format>
                 </rule>`;
             });
 

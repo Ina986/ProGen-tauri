@@ -13,6 +13,26 @@ fn preview_cache() -> &'static Mutex<HashMap<String, String>> {
     PREVIEW_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+#[tauri::command]
+async fn show_open_viewer_files_dialog(app: tauri::AppHandle) -> serde_json::Value {
+    use tauri_plugin_dialog::DialogExt;
+
+    let result = app
+        .dialog()
+        .file()
+        .set_title("画像/PDFファイルを選択")
+        .add_filter("Viewer files", &["jpg", "jpeg", "png", "tif", "tiff", "bmp", "gif", "psd", "webp", "pdf"])
+        .blocking_pick_files();
+
+    match result {
+        Some(paths) => serde_json::json!({
+            "success": true,
+            "paths": paths.into_iter().map(|path| path.to_string()).collect::<Vec<_>>()
+        }),
+        None => serde_json::json!({ "success": false, "canceled": true }),
+    }
+}
+
 // ========================================
 // ベースパス定義（Gドライブ）
 // ========================================
@@ -1393,9 +1413,22 @@ fn encode_preview_to_disk(
 }
 
 #[tauri::command]
+fn read_binary_file_base64(file_path: String) -> serde_json::Value {
+    use base64::Engine;
+
+    match fs::read(&file_path) {
+        Ok(bytes) => {
+            let base64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+            serde_json::json!({ "success": true, "base64": base64 })
+        }
+        Err(e) => serde_json::json!({ "success": false, "error": e.to_string() }),
+    }
+}
+
+#[tauri::command]
 async fn show_open_image_folder_dialog(app: tauri::AppHandle) -> serde_json::Value {
     use tauri_plugin_dialog::DialogExt;
-    let result = app.dialog().file().set_title("画像フォルダを選択").blocking_pick_folder();
+    let result = app.dialog().file().set_title("画像/PDFフォルダを選択").blocking_pick_folder();
     match result {
         Some(path) => serde_json::json!({ "success": true, "folderPath": path.to_string() }),
         None => serde_json::json!({ "success": false, "canceled": true }),
@@ -1542,7 +1575,9 @@ pub fn run() {
             list_image_files,
             list_image_files_from_paths,
             load_image_preview,
+            read_binary_file_base64,
             show_open_image_folder_dialog,
+            show_open_viewer_files_dialog,
             read_dropped_txt_files,
             open_and_read_json_dialog,
             show_save_json_dialog,

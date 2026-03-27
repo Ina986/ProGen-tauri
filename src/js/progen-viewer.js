@@ -28,6 +28,7 @@ const VIEWER_PREVIEW_MAX_SIZE = 2000;
 let viewerIsLoading = false;
 let viewerPageSyncEnabled = false;
 let viewerPdfDocCache = new Map(); // pdfPath -> PDFDocumentProxy
+let viewerPdfBinaryCache = new Map(); // pdfPath -> Uint8Array
 
 // ===== DOM参照 =====
 function _vEl(id) { return document.getElementById(id); }
@@ -45,10 +46,7 @@ async function _expandPdfFiles(files) {
             continue;
         }
         try {
-            const lib = await _ensurePdfJs();
-            const assetUrl = window.convertFileSrc(file.path);
-            const pdf = await lib.getDocument(assetUrl).promise;
-            viewerPdfDocCache.set(file.path, pdf);
+            const pdf = await _getPdfDocument(file.path);
             for (let p = 1; p <= pdf.numPages; p++) {
                 expanded.push({
                     name: file.name + ' (p.' + p + '/' + pdf.numPages + ')',
@@ -73,11 +71,19 @@ async function cpViewerSetFiles(files, folderPath) {
     viewerCurrentIndex = 0;
     viewerImageCache.clear();
     viewerPdfDocCache.clear();
+    viewerPdfBinaryCache.clear();
     _showViewerCanvas();
 
     // PDFが含まれていればページ展開
     const hasPdf = files.some(f => _isPdf(f.name));
     viewerFiles = hasPdf ? await _expandPdfFiles(files) : files;
+
+    if (!viewerFiles.length) {
+        _vEl('cpViewerFilename').textContent = '表示できる画像/PDFファイルが見つかりません';
+        _vEl('cpViewerCounter').textContent = '';
+        _updateNavArrows();
+        return;
+    }
 
     loadViewerImage(0);
 }
@@ -95,6 +101,19 @@ async function cpViewerOpenFolder() {
         return;
     }
     cpViewerSetFiles(listResult.files, result.folderPath);
+}
+
+async function cpViewerOpenFiles() {
+    const result = await window.electronAPI.showOpenViewerFilesDialog();
+    if (!result.success || !result.paths?.length) return;
+
+    const listResult = await window.electronAPI.listImageFilesFromPaths(result.paths);
+    if (!listResult.success || listResult.files.length === 0) {
+        _vEl('cpViewerFilename').textContent = '表示できる画像/PDFファイルが見つかりません';
+        _vEl('cpViewerCounter').textContent = '';
+        return;
+    }
+    cpViewerSetFiles(listResult.files, listResult.folderPath || '');
 }
 
 // ===== ドロップゾーン ↔ キャンバス 切替 =====
@@ -198,13 +217,7 @@ async function loadViewerImage(index) {
 
 // ===== PDFページレンダリング =====
 async function _renderPdfPage(pdfPath, pageNum) {
-    let pdf = viewerPdfDocCache.get(pdfPath);
-    if (!pdf) {
-        const lib = await _ensurePdfJs();
-        const assetUrl = window.convertFileSrc(pdfPath);
-        pdf = await lib.getDocument(assetUrl).promise;
-        viewerPdfDocCache.set(pdfPath, pdf);
-    }
+    const pdf = await _getPdfDocument(pdfPath);
     const page = await pdf.getPage(pageNum);
     const scale = VIEWER_PREVIEW_MAX_SIZE / Math.max(page.view[2], page.view[3]);
     const viewport = page.getViewport({ scale: Math.min(scale, 2) });
@@ -214,6 +227,35 @@ async function _renderPdfPage(pdfPath, pageNum) {
     const ctx = canvas.getContext('2d');
     await page.render({ canvasContext: ctx, viewport }).promise;
     return canvas.toDataURL('image/png');
+}
+
+function _base64ToUint8Array(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
+}
+
+async function _getPdfDocument(pdfPath) {
+    let pdf = viewerPdfDocCache.get(pdfPath);
+    if (pdf) return pdf;
+
+    let bytes = viewerPdfBinaryCache.get(pdfPath);
+    if (!bytes) {
+        const result = await window.electronAPI.readBinaryFileBase64(pdfPath);
+        if (!result.success || !result.base64) {
+            throw new Error(result.error || 'PDFの読み込みに失敗しました');
+        }
+        bytes = _base64ToUint8Array(result.base64);
+        viewerPdfBinaryCache.set(pdfPath, bytes);
+    }
+
+    const lib = await _ensurePdfJs();
+    pdf = await lib.getDocument({ data: bytes }).promise;
+    viewerPdfDocCache.set(pdfPath, pdf);
+    return pdf;
 }
 
 // ===== フロントエンドURLキャッシュ管理 =====
@@ -437,8 +479,9 @@ function setupViewerDragDrop() {
 
         // 画像ファイルまたはフォルダが含まれるか確認（TXTのみなら次のハンドラに委譲）
         const hasImageOrFolder = paths.some(p => {
-            const ext = p.toLowerCase().split('.').pop();
-            return IMAGE_EXTS.includes('.' + ext) || !p.includes('.');
+            const lowerPath = p.toLowerCase();
+            const basename = lowerPath.split(/[\\/]/).pop() || '';
+            return IMAGE_EXTS.some(ext => lowerPath.endsWith(ext)) || !/\.[^\\/]+$/.test(basename);
         });
         if (!hasImageOrFolder) return false;
 
@@ -480,6 +523,6 @@ function cpViewerTogglePageSync() {
 }
 
 // ===== エクスポート =====
-export { cpViewerOpenFolder, cpViewerPrev, cpViewerNext, cpViewerZoom, cpViewerZoomFit, cpViewerSetFiles, cpViewerTogglePageSync };
+export { cpViewerOpenFolder, cpViewerOpenFiles, cpViewerPrev, cpViewerNext, cpViewerZoom, cpViewerZoomFit, cpViewerSetFiles, cpViewerTogglePageSync };
 
-Object.assign(window, { cpViewerOpenFolder, cpViewerPrev, cpViewerNext, cpViewerZoom, cpViewerZoomFit, cpViewerSetFiles, cpViewerTogglePageSync });
+Object.assign(window, { cpViewerOpenFolder, cpViewerOpenFiles, cpViewerPrev, cpViewerNext, cpViewerZoom, cpViewerZoomFit, cpViewerSetFiles, cpViewerTogglePageSync });

@@ -4865,6 +4865,10 @@ tr.inactive td {
     background: var(--surface-dim); color: var(--text);
     border-color: var(--border-strong);
 }
+.cp-viewer-dropzone-actions {
+    display: flex; align-items: center; justify-content: center;
+    gap: 8px; flex-wrap: wrap;
+}
 
 /* テキストエリア空状態 — ビューアーのドロップゾーンクラスを共用 */
 .cp-select-mode:has(.cp-viewer-dropzone) {

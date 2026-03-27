@@ -1427,10 +1427,16 @@
                             </div>
                             <p class="cp-viewer-dropzone-title">画像/PDFファイルをドロップ</p>
                             <p class="cp-viewer-dropzone-sub">フォルダまたは画像・PDFファイルをドラッグ＆ドロップ</p>
-                            <button class="cp-viewer-dropzone-btn" onclick="cpViewerOpenFolder()">
-                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-                                フォルダを開く
-                            </button>
+                            <div class="cp-viewer-dropzone-actions">
+                                <button class="cp-viewer-dropzone-btn" onclick="cpViewerOpenFiles()">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                    ファイルを開く
+                                </button>
+                                <button class="cp-viewer-dropzone-btn" onclick="cpViewerOpenFolder()">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                    フォルダを開く
+                                </button>
+                            </div>
                         </div>
                     </div>
                     <div class="cp-viewer-canvas" id="cpViewerCanvas" style="display:none;">
@@ -1466,6 +1472,9 @@
                     </div>
                     <!-- ボトムツールバー -->
                     <div class="cp-viewer-toolbar">
+                        <button class="cp-viewer-toolbar-btn" onclick="cpViewerOpenFiles()" title="ファイルを開く">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        </button>
                         <button class="cp-viewer-toolbar-btn" onclick="cpViewerOpenFolder()" title="フォルダを開く">
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
                         </button>
