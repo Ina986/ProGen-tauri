@@ -679,7 +679,7 @@ function generateUnificationRulesXmlForCheck() {
                     <instruction>以下の人物名について、初出時にルビが付いているか確認してください。</instruction>`;
             rulesInCat.forEach(r => {
                 xml += `
-                    <rule><character>${escapeHtml(r.src)}</character><reading>${escapeHtml(r.dst)}</reading><format>${escapeHtml(r.src)}(${escapeHtml(r.dst)})</format></rule>`;
+                    <rule><character>${escapeHtml(r.src)}</character><reading>${escapeHtml(r.dst)}</reading><format>｛${escapeHtml(r.src)}｝（${escapeHtml(r.dst)}）</format></rule>`;
             });
         } else if (catKey === 'auxiliary') {
             xml += `

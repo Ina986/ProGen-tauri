@@ -1643,7 +1643,7 @@ function cpRenderChunkContent(span, chunk) {
         return;
     }
 
-    const rubyPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+    const rubyPattern = /｛([^｝]+)｝（([^）]+)）|\[([^\]]+)\]\(([^)]+)\)/g;
     const content = chunk.content;
     let lastIndex = 0;
     let match;
@@ -1654,12 +1654,14 @@ function cpRenderChunkContent(span, chunk) {
         }
         const parentSpan = document.createElement('span');
         parentSpan.className = 'cp-ruby-highlight';
-        parentSpan.textContent = match[1];
+        const parentText = match[1] || match[3];
+        const rubyText = match[2] || match[4];
+        parentSpan.textContent = parentText;
         span.appendChild(parentSpan);
 
         const rubySpan = document.createElement('span');
         rubySpan.className = 'cp-ruby-annotation';
-        rubySpan.textContent = '(' + match[2] + ')';
+        rubySpan.textContent = '（' + rubyText + '）';
         span.appendChild(rubySpan);
 
         lastIndex = match.index + match[0].length;
@@ -1844,17 +1846,11 @@ function cpToggleDeleteMark() {
 
 // ===== ルビ付け =====
 function cpFormatRuby(parent, ruby) {
-    if (cpRubyMode === 'standard') {
-        return parent + '（' + ruby + '）';
-    }
-    return '[' + parent + '](' + ruby + ')';
+    return '｛' + parent + '｝（' + ruby + '）';
 }
 
 function cpFormatRubyPlaceholder(parent) {
-    if (cpRubyMode === 'standard') {
-        return parent + '（...）';
-    }
-    return '[' + parent + '](...)';
+    return '｛' + parent + '｝（...）';
 }
 
 function cpSwitchRubyMode(mode) {

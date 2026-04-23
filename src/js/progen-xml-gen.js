@@ -99,9 +99,9 @@ function generateXML() {
             if (rubyRules.length > 0) {
                 rulesXML += `
             <group name="難読漢字（ルビ用）">
-                <instruction>このグループのルールは置換ではなく、[親文字](ルビ) の形式で出力してください。</instruction>
+                <instruction>このグループのルールは置換ではなく、｛親文字｝（ルビ） の形式で出力してください。</instruction>
                 <instruction>ルビは各難読漢字の初出時のみ付けてください。2回目以降の出現時は親文字のみ（ルビなし）で出力してください。</instruction>
-                <example>初出：[嗚咽](おえつ)　→　2回目以降：嗚咽</example>`;
+                <example>初出：｛嗚咽｝（おえつ）　→　2回目以降：嗚咽</example>`;
                 rubyRules.forEach(r => {
                     const safeSrc = escapeHtml(r.src);
                     const safeDst = escapeHtml(r.dst);
@@ -109,7 +109,7 @@ function generateXML() {
                 <rule type="ruby">
                     <kanji>${safeSrc}</kanji>
                     <reading>${safeDst}</reading>
-                    <output_format>[${safeSrc}](${safeDst})</output_format>
+                    <output_format>｛${safeSrc}｝（${safeDst}）</output_format>
                 </rule>`;
                 });
                 rulesXML += `
@@ -129,9 +129,9 @@ function generateXML() {
 
             rulesXML += `
             <group name="${cat.name}">
-                <instruction>このグループのルールは置換ではなく、[親文字](ルビ) の形式で出力してください。</instruction>
+                <instruction>このグループのルールは置換ではなく、｛親文字｝（ルビ） の形式で出力してください。</instruction>
                 <instruction>ルビは各人物名の初出時のみ付けてください。2回目以降の出現時は親文字のみ（ルビなし）で出力してください。</instruction>
-                <example>初出：[田中](たなか)　→　2回目以降：田中</example>`;
+                <example>初出：｛田中｝（たなか）　→　2回目以降：田中</example>`;
 
             rubyCharacters.forEach(r => {
                 const safeSrc = escapeHtml(r.src);
@@ -140,7 +140,7 @@ function generateXML() {
                 <rule type="ruby">
                     <character>${safeSrc}</character>
                     <reading>${safeDst}</reading>
-                    <output_format>[${safeSrc}](${safeDst})</output_format>
+                    <output_format>｛${safeSrc}｝（${safeDst}）</output_format>
                 </rule>`;
             });
 
@@ -678,11 +678,62 @@ function copyAndOpenGemini() {
     });
     // Geminiを新しいタブで開く（クリップボード操作に依存しない）
     window.open('https://gemini.google.com/app', '_blank');
+    setTimeout(() => {
+        openExtractionResultPasteModal();
+    }, 500);
 }
 
+function openExtractionResultPasteModal() {
+    const modal = document.getElementById('extractionResultPasteModal');
+    const textarea = document.getElementById('extractionResultPasteArea');
+    if (!modal || !textarea) return;
+    textarea.value = '';
+    modal.style.display = 'flex';
+    setTimeout(() => textarea.focus(), 50);
+}
+
+function closeExtractionResultPasteModal() {
+    const modal = document.getElementById('extractionResultPasteModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveExtractionResultText(openEditorAfterSave) {
+    const textarea = document.getElementById('extractionResultPasteArea');
+    const content = textarea ? textarea.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : '';
+    if (!content.trim()) {
+        showToast('抽出結果テキストを貼り付けてください', 'warning');
+        return;
+    }
+
+    if (!window.electronAPI || !window.electronAPI.showSaveTextDialog || !window.electronAPI.writeTextFile) {
+        showToast('保存機能を利用できません', 'error');
+        return;
+    }
+
+    const dialogResult = await window.electronAPI.showSaveTextDialog('抽出結果.txt');
+    if (!dialogResult.success) return;
+
+    const saveResult = await window.electronAPI.writeTextFile(dialogResult.filePath, content);
+    if (!saveResult.success) {
+        showToast('保存に失敗しました', 'error');
+        return;
+    }
+
+    showToast('抽出結果テキストを保存しました', 'success');
+    closeExtractionResultPasteModal();
+
+    if (openEditorAfterSave && typeof cpLoadFromHandoff === 'function') {
+        const fileName = dialogResult.filePath.replace(/\\/g, '/').split('/').pop() || '抽出結果.txt';
+        await cpLoadFromHandoff({
+            fileName,
+            filePath: dialogResult.filePath,
+            content
+        });
+    }
+}
 
 // ES Module exports
-export { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini };
+export { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, saveExtractionResultText };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini });
+Object.assign(window, { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, saveExtractionResultText });
