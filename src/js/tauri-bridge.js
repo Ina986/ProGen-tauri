@@ -81,6 +81,7 @@
         listImageFiles: (dirPath) => invoke('list_image_files', { dirPath }),
         listImageFilesFromPaths: (paths) => invoke('list_image_files_from_paths', { paths }),
         loadImagePreview: (filePath, maxSize) => invoke('load_image_preview', { filePath, maxSize: maxSize || 1600 }),
+        readBinaryFileBase64: (filePath) => invoke('read_binary_file_base64', { filePath }),
 
         // D&Dで落とされたTXTファイルをパスから読み込み
         readDroppedTxtFiles: (paths) => invoke('read_dropped_txt_files', { paths }),

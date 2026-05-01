@@ -38,17 +38,18 @@ function generateXML() {
             const personOpt = numberSubRules.personCount.options[state.numberRulePersonCount];
             const thingOpt = numberSubRules.thingCount.options[state.numberRuleThingCount];
             const monthOpt = numberSubRules.month.options[state.numberRuleMonth];
-            let baseInstruction;
+            let baseInstruction = '';
             if (state.numberRuleBase === 1) {
                 baseInstruction = 'すべてアラビア数字で統一して表記してください。';
             } else if (state.numberRuleBase === 2) {
                 baseInstruction = 'すべて漢数字で統一して表記してください。';
-            } else {
+            } else if (state.numberRuleBase === 0) {
                 baseInstruction = '基本的にアラビア数字で表記してください。ただし、動詞・名詞として使われる場合は漢数字で表記してください。';
             }
             rulesXML += `
             <group name="数字の表記">
-                <instruction>${escapeHtml(baseInstruction)}</instruction>`;
+                ${baseInstruction ? `<instruction>${escapeHtml(baseInstruction)}</instruction>` : ''}
+                <instruction>一桁だけのアラビア数字は全角、それ以外のアラビア数字は半角で表記してください。</instruction>`;
             if (state.numberSubRulesEnabled) {
                 rulesXML += `
                 <sub_rule name="人数の表記">

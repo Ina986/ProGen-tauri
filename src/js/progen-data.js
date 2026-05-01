@@ -100,7 +100,8 @@ async function loadMasterRule(labelValue) {
 const numberBaseOptions = [
     'アラビア数字 / 動詞名詞は漢数字',
     'アラビア数字統一',
-    '漢数字統一'
+    '漢数字統一',
+    '変更なし'
 ];
 // [moved to state] numberRulePersonCount
 // [moved to state] numberRuleThingCount

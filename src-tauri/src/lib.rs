@@ -1,3 +1,4 @@
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -1130,6 +1131,25 @@ fn read_dropped_txt_files(paths: Vec<String>) -> serde_json::Value {
 }
 
 #[tauri::command]
+fn read_binary_file_base64(file_path: String) -> serde_json::Value {
+    let path = Path::new(&file_path);
+    if !path.is_file() {
+        return serde_json::json!({ "success": false, "error": "ファイルが見つかりません" });
+    }
+
+    match fs::read(path) {
+        Ok(bytes) => serde_json::json!({
+            "success": true,
+            "data": base64::engine::general_purpose::STANDARD.encode(bytes),
+        }),
+        Err(e) => serde_json::json!({
+            "success": false,
+            "error": format!("ファイル読み込みエラー: {}", e),
+        }),
+    }
+}
+
+#[tauri::command]
 async fn load_image_preview(file_path: String, max_size: u32) -> serde_json::Value {
     // 非同期でブロッキング処理を実行（UIフリーズ防止）
     match tauri::async_runtime::spawn_blocking(move || {
@@ -1634,6 +1654,7 @@ pub fn run() {
             load_image_preview,
             show_open_image_folder_dialog,
             read_dropped_txt_files,
+            read_binary_file_base64,
             open_and_read_json_dialog,
             show_save_json_dialog,
         ])

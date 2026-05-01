@@ -224,21 +224,30 @@ async function _loadPdfDocument(pdfPath) {
     try {
         let bytes = viewerPdfBinaryCache.get(pdfPath);
         if (!bytes) {
-            const response = await fetch(window.convertFileSrc(pdfPath));
-            if (!response.ok) {
-                throw new Error('Failed to fetch PDF: ' + response.status);
+            const result = await window.electronAPI.readBinaryFileBase64(pdfPath);
+            if (!result.success || !result.data) {
+                throw new Error(result.error || 'Failed to read PDF bytes');
             }
-            bytes = new Uint8Array(await response.arrayBuffer());
+            bytes = _base64ToUint8Array(result.data);
             viewerPdfBinaryCache.set(pdfPath, bytes);
         }
         pdf = await lib.getDocument({ data: bytes }).promise;
     } catch (fetchError) {
-        console.warn('PDF binary load fallback:', pdfPath, fetchError);
+        console.warn('PDF binary load failed:', pdfPath, fetchError);
         pdf = await lib.getDocument(window.convertFileSrc(pdfPath)).promise;
     }
 
     viewerPdfDocCache.set(pdfPath, pdf);
     return pdf;
+}
+
+function _base64ToUint8Array(base64) {
+    const binary = window.atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes;
 }
 
 function _cacheSet(path, result, assetUrl) {

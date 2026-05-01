@@ -438,7 +438,7 @@ function adminShowEditMode() {
 function adminRenderNumberMainContent(main, cat) {
     main.innerHTML = `
         <div class="edit-main-header">
-            <h3>${cat.icon} ${cat.name} <span style="font-weight:normal; font-size:0.85em; color:#888;">(3/3)</span></h3>
+            <h3>${cat.icon} ${cat.name} <span style="font-weight:normal; font-size:0.85em; color:#888;">(4/4)</span></h3>
         </div>
         <div class="edit-main-body"></div>
     `;
@@ -550,7 +550,7 @@ function adminRenderListMode() {
     col3.innerHTML = `
         <div class="category-header" style="background:var(--copper);">
             <span>🔢 数字</span>
-            <span class="count">3/3</span>
+            <span class="count">4/4</span>
         </div>
         <div class="number-summary" style="cursor:pointer;" onclick="adminCurrentCategory='number'; adminCurrentViewMode='edit'; adminShowEditMode();">
             <div><span class="number-summary-label">基本</span>${numberBaseOptions[adminOptions.state.numberRuleBase] || numberBaseOptions[0]}</div>
