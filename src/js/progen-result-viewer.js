@@ -26,6 +26,9 @@ let calibrationFolderSearchTimeout = null; // 検索デバウンス用
 let calibrationAutoExpandFolder = ''; // フォルダブラウザ自動展開対象
 
 // レーベル値→TXTフォルダ名マッピング（名前が異なるもののみ）
+let calibrationFolderBrowserMode = 'save'; // 'save' | 'load'
+let calibrationFileSelectCallback = null;
+
 const labelToTxtFolderMapping = {
     'Nupu': 'NuPu',
     'Ropopo': 'Ropopo!',
@@ -148,6 +151,49 @@ function extractCalibrationInfoFromPath(filePath, fileInfos) {
 }
 
 // 校正データを保存（フォルダブラウザを表示）
+async function openCalibrationFolderPicker(options = {}) {
+    const {
+        mode = 'save',
+        autoExpandFolder = '',
+        onFileSelect = null,
+    } = options;
+
+    calibrationFolderBrowserMode = mode;
+    calibrationFileSelectCallback = onFileSelect;
+    calibrationAutoExpandFolder = autoExpandFolder;
+
+    const modal = document.getElementById('calibrationFolderModal');
+    const tree = document.getElementById('calibrationFolderTree');
+    const pathDisplay = document.getElementById('calibrationFolderCurrentPath');
+    const searchInput = document.getElementById('calibrationFolderSearchInput');
+    const newWorkBtn = document.getElementById('calibrationNewWorkBtn');
+    const title = modal?.querySelector('.modal-header span');
+
+    if (title) {
+        title.textContent = mode === 'load' ? 'Gドライブ - 校正データを開く' : 'Gドライブ - 保存先を選択';
+    }
+
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.placeholder = mode === 'load' ? 'レーベル名・作品名で検索...' : '作品名で検索...';
+    }
+    clearCalibrationFolderSearch();
+
+    if (newWorkBtn) newWorkBtn.style.display = 'none';
+    calibrationExpandedLabel = { path: '', name: '' };
+
+    modal.style.display = 'flex';
+    tree.innerHTML = '<div class="json-folder-loading">読み込み中...</div>';
+
+    try {
+        calibrationFolderBasePath = await window.electronAPI.getTxtFolderPath();
+        pathDisplay.textContent = calibrationFolderBasePath;
+        await loadCalibrationFolderContents(calibrationFolderBasePath, tree, 0);
+    } catch (error) {
+        tree.innerHTML = '<div class="json-folder-loading">読み込みに失敗しました: ' + error.message + '</div>';
+    }
+}
+
 async function saveCalibrationData() {
     if (!window.electronAPI || !window.electronAPI.isElectron) {
         showToast('この機能はElectronアプリでのみ使用できます', 'error');
@@ -165,6 +211,8 @@ async function saveCalibrationData() {
     const currentLabel = document.getElementById('proofreadingLabelSelect')?.value ||
                          document.getElementById('labelSelector')?.value || '';
     calibrationAutoExpandFolder = labelToTxtFolderMapping[currentLabel] || currentLabel || '';
+    calibrationFolderBrowserMode = 'save';
+    calibrationFileSelectCallback = null;
 
     // フォルダブラウザモーダルを開く
     const modal = document.getElementById('calibrationFolderModal');
@@ -173,8 +221,14 @@ async function saveCalibrationData() {
 
     // 検索バーをリセット
     const searchInput = document.getElementById('calibrationFolderSearchInput');
-    if (searchInput) searchInput.value = '';
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.placeholder = '作品名で検索...';
+    }
     clearCalibrationFolderSearch();
+
+    const title = modal?.querySelector('.modal-header span');
+    if (title) title.textContent = 'Gドライブ - 保存先を選択';
 
     // 新規作品ボタンを非表示（レーベル展開後に表示）
     const newWorkBtn = document.getElementById('calibrationNewWorkBtn');
@@ -198,6 +252,41 @@ async function saveCalibrationData() {
 // フォルダブラウザモーダルを閉じる
 function closeCalibrationFolderModal() {
     document.getElementById('calibrationFolderModal').style.display = 'none';
+    calibrationFileSelectCallback = null;
+}
+
+async function openCalibrationFolderPickerForLoad(options = {}) {
+    const { autoExpandFolder = '', onFileSelect = null } = options;
+
+    calibrationFolderBrowserMode = 'load';
+    calibrationFileSelectCallback = onFileSelect;
+    calibrationAutoExpandFolder = autoExpandFolder;
+
+    const modal = document.getElementById('calibrationFolderModal');
+    const tree = document.getElementById('calibrationFolderTree');
+    const pathDisplay = document.getElementById('calibrationFolderCurrentPath');
+    const searchInput = document.getElementById('calibrationFolderSearchInput');
+    const newWorkBtn = document.getElementById('calibrationNewWorkBtn');
+    const title = modal?.querySelector('.modal-header span');
+
+    if (title) title.textContent = 'Gドライブ - 校正データを開く';
+    if (searchInput) {
+        searchInput.value = '';
+        searchInput.placeholder = 'レーベル名・作品名で検索...';
+    }
+    if (newWorkBtn) newWorkBtn.style.display = 'none';
+    clearCalibrationFolderSearch();
+
+    modal.style.display = 'flex';
+    tree.innerHTML = '<div class="json-folder-loading">読み込み中...</div>';
+
+    try {
+        calibrationFolderBasePath = await window.electronAPI.getTxtFolderPath();
+        pathDisplay.textContent = calibrationFolderBasePath;
+        await loadCalibrationFolderContents(calibrationFolderBasePath, tree, 0);
+    } catch (error) {
+        tree.innerHTML = '<div class="json-folder-loading">読み込みに失敗しました: ' + error.message + '</div>';
+    }
 }
 
 // フォルダ内容を読み込んでツリー表示（depth: 0=レーベル, 1=作品名）
@@ -239,7 +328,7 @@ async function loadCalibrationFolderContents(dirPath, container, depth) {
         itemEl.appendChild(name);
 
         // 作品名フォルダ（depth=1）の場合は「選択」ボタンを追加
-        if (depth >= 1) {
+        if (depth >= 1 && calibrationFolderBrowserMode === 'save') {
             const selectBtn = document.createElement('button');
             selectBtn.className = 'btn btn-green btn-small';
             selectBtn.style.cssText = 'margin-left:auto; padding:2px 10px; font-size:0.8em;';
@@ -305,7 +394,40 @@ async function loadCalibrationFolderContents(dirPath, container, depth) {
     });
 
     // レーベル展開時（depth=0）: 子フォルダ一覧の末尾に「新規作品を登録」ボタンを追加
-    if (depth === 0) {
+    if (depth === 2 && calibrationFolderBrowserMode === 'load') {
+        const calibrationDataDir = dirPath + '\\校正チェックデータ';
+        try {
+            const fileResult = await window.electronAPI.listDirectory(calibrationDataDir);
+            if (fileResult.success) {
+                const jsonFiles = fileResult.items
+                    .filter(item => item.isFile && item.name.toLowerCase().endsWith('.json'))
+                    .sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+
+                jsonFiles.forEach((item) => {
+                    const fileEl = document.createElement('div');
+                    fileEl.className = 'json-folder-item file';
+                    fileEl.style.cssText = 'margin-left:28px; cursor:pointer;';
+                    fileEl.innerHTML =
+                        '<span style="display:inline-flex;align-items:center;gap:8px;">' +
+                        '<span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>' +
+                        '<span class="folder-name">' + item.name + '</span>' +
+                        '</span>';
+                    fileEl.addEventListener('click', () => {
+                        const callback = calibrationFileSelectCallback;
+                        closeCalibrationFolderModal();
+                        if (typeof callback === 'function') {
+                            callback(item.path);
+                        }
+                    });
+                    container.appendChild(fileEl);
+                });
+            }
+        } catch (_error) {
+            // ignore missing folder
+        }
+    }
+
+    if (depth === 0 && calibrationFolderBrowserMode === 'save') {
         const newWorkBtn = document.createElement('div');
         newWorkBtn.style.cssText = 'padding:8px 12px; margin-top:4px;';
         newWorkBtn.innerHTML = '<button class="btn btn-outline" style="width:100%; padding:8px; font-size:0.85em; border-style:dashed;" onclick="showCalibrationNewWorkForm(\'' + dirPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\', \'' + dirPath.split(/[\\\\/]/).pop().replace(/'/g, "\\'") + '\')">＋ 新規作品を登録</button>';
@@ -1943,7 +2065,7 @@ function getSimpleCategoryColor(category) {
 
 
 // ES Module exports
-export { makePickedKey, toggleResultPicked, toggleCategoryPicked, getCheckedAttr, getPickedResultData, extractCalibrationInfoFromPath, saveCalibrationData, closeCalibrationFolderModal, loadCalibrationFolderContents, selectCalibrationFolder, closeCalibrationSaveModal, confirmCalibrationSave, showCalibrationSaveSuccessModal, closeCalibrationSaveSuccessModal, launchComicBridgeFromSave, showCalibrationNewWorkForm, closeCalibrationNewWorkModal, registerCalibrationNewWork, startCalibrationNewWorkFromBrowser, performCalibrationFolderSearch, clearCalibrationFolderSearch, initCalibrationFolderBrowser, goToResultViewerPage, showResultViewerPage, goToHomeFromResultViewer, goToProofreadingFromResultViewer, selectPasteType, parseAndGoToViewer, openResultPasteModal, closeResultPasteModal, switchResultTab, setupSingleFilterForVariation, setupSingleFilterForSimple, setupParallelFilters, renderParallelView, countVariationItems, renderCategoryTablesToElement, renderSimpleResultToElement, renderSimplePageOrderToElement, renderSimpleCategoryOrderToElement, openResultPasteModalFor, showEmptyResultMessage, updateResultCountSimple, updateCountDisplay, clearCurrentResult, clearVariationResult, clearSimpleResult, switchSimpleDisplayMode, parseAndDisplayResult, extractVolumeAndPage, formatPageShort, compareByVolumeAndPage, parseVariationCSV, parseSimpleCSV, parseCSVLine, groupByCategory, buildCategoryCardHtml, renderCategoryTables, getCategoryColorClass, toggleResultCategory, populateCategoryFilter, applySingleCategoryFilter, applyVariationCategoryFilter, applySimpleCategoryFilter, renderCategoryTablesFiltered, renderSimpleResultFiltered, updateResultCount, renderSimplePageOrderToContainer, renderSimpleCategoryOrderToContainer, clearResultViewer, renderSimpleResult, renderSimplePageOrder, renderSimpleCategoryOrder, getCheckKind, getSimpleCategoryColor };
+export { makePickedKey, toggleResultPicked, toggleCategoryPicked, getCheckedAttr, getPickedResultData, extractCalibrationInfoFromPath, saveCalibrationData, openCalibrationFolderPickerForLoad, closeCalibrationFolderModal, loadCalibrationFolderContents, selectCalibrationFolder, closeCalibrationSaveModal, confirmCalibrationSave, showCalibrationSaveSuccessModal, closeCalibrationSaveSuccessModal, launchComicBridgeFromSave, showCalibrationNewWorkForm, closeCalibrationNewWorkModal, registerCalibrationNewWork, startCalibrationNewWorkFromBrowser, performCalibrationFolderSearch, clearCalibrationFolderSearch, initCalibrationFolderBrowser, goToResultViewerPage, showResultViewerPage, goToHomeFromResultViewer, goToProofreadingFromResultViewer, selectPasteType, parseAndGoToViewer, openResultPasteModal, closeResultPasteModal, switchResultTab, setupSingleFilterForVariation, setupSingleFilterForSimple, setupParallelFilters, renderParallelView, countVariationItems, renderCategoryTablesToElement, renderSimpleResultToElement, renderSimplePageOrderToElement, renderSimpleCategoryOrderToElement, openResultPasteModalFor, showEmptyResultMessage, updateResultCountSimple, updateCountDisplay, clearCurrentResult, clearVariationResult, clearSimpleResult, switchSimpleDisplayMode, parseAndDisplayResult, extractVolumeAndPage, formatPageShort, compareByVolumeAndPage, parseVariationCSV, parseSimpleCSV, parseCSVLine, groupByCategory, buildCategoryCardHtml, renderCategoryTables, getCategoryColorClass, toggleResultCategory, populateCategoryFilter, applySingleCategoryFilter, applyVariationCategoryFilter, applySimpleCategoryFilter, renderCategoryTablesFiltered, renderSimpleResultFiltered, updateResultCount, renderSimplePageOrderToContainer, renderSimpleCategoryOrderToContainer, clearResultViewer, renderSimpleResult, renderSimplePageOrder, renderSimpleCategoryOrder, getCheckKind, getSimpleCategoryColor };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { labelToTxtFolderMapping, makePickedKey, toggleResultPicked, toggleCategoryPicked, getCheckedAttr, getPickedResultData, extractCalibrationInfoFromPath, saveCalibrationData, closeCalibrationFolderModal, loadCalibrationFolderContents, selectCalibrationFolder, closeCalibrationSaveModal, confirmCalibrationSave, showCalibrationSaveSuccessModal, closeCalibrationSaveSuccessModal, launchComicBridgeFromSave, showCalibrationNewWorkForm, closeCalibrationNewWorkModal, registerCalibrationNewWork, startCalibrationNewWorkFromBrowser, performCalibrationFolderSearch, clearCalibrationFolderSearch, initCalibrationFolderBrowser, goToResultViewerPage, showResultViewerPage, goToHomeFromResultViewer, goToProofreadingFromResultViewer, selectPasteType, parseAndGoToViewer, openResultPasteModal, closeResultPasteModal, switchResultTab, setupSingleFilterForVariation, setupSingleFilterForSimple, setupParallelFilters, renderParallelView, countVariationItems, renderCategoryTablesToElement, renderSimpleResultToElement, renderSimplePageOrderToElement, renderSimpleCategoryOrderToElement, openResultPasteModalFor, showEmptyResultMessage, updateResultCountSimple, updateResultCount, updateCountDisplay, clearCurrentResult, clearVariationResult, clearSimpleResult, switchSimpleDisplayMode, parseAndDisplayResult, extractVolumeAndPage, formatPageShort, compareByVolumeAndPage, parseVariationCSV, parseSimpleCSV, parseCSVLine, groupByCategory, buildCategoryCardHtml, renderCategoryTables, getCategoryColorClass, toggleResultCategory, populateCategoryFilter, applySingleCategoryFilter, applyVariationCategoryFilter, applySimpleCategoryFilter, renderCategoryTablesFiltered, renderSimpleResultFiltered, renderSimplePageOrderToContainer, renderSimpleCategoryOrderToContainer, clearResultViewer, renderSimpleResult, renderSimplePageOrder, renderSimpleCategoryOrder, getCheckKind, getSimpleCategoryColor });
+Object.assign(window, { labelToTxtFolderMapping, makePickedKey, toggleResultPicked, toggleCategoryPicked, getCheckedAttr, getPickedResultData, extractCalibrationInfoFromPath, saveCalibrationData, openCalibrationFolderPickerForLoad, closeCalibrationFolderModal, loadCalibrationFolderContents, selectCalibrationFolder, closeCalibrationSaveModal, confirmCalibrationSave, showCalibrationSaveSuccessModal, closeCalibrationSaveSuccessModal, launchComicBridgeFromSave, showCalibrationNewWorkForm, closeCalibrationNewWorkModal, registerCalibrationNewWork, startCalibrationNewWorkFromBrowser, performCalibrationFolderSearch, clearCalibrationFolderSearch, initCalibrationFolderBrowser, goToResultViewerPage, showResultViewerPage, goToHomeFromResultViewer, goToProofreadingFromResultViewer, selectPasteType, parseAndGoToViewer, openResultPasteModal, closeResultPasteModal, switchResultTab, setupSingleFilterForVariation, setupSingleFilterForSimple, setupParallelFilters, renderParallelView, countVariationItems, renderCategoryTablesToElement, renderSimpleResultToElement, renderSimplePageOrderToElement, renderSimpleCategoryOrderToElement, openResultPasteModalFor, showEmptyResultMessage, updateResultCountSimple, updateResultCount, updateCountDisplay, clearCurrentResult, clearVariationResult, clearSimpleResult, switchSimpleDisplayMode, parseAndDisplayResult, extractVolumeAndPage, formatPageShort, compareByVolumeAndPage, parseVariationCSV, parseSimpleCSV, parseCSVLine, groupByCategory, buildCategoryCardHtml, renderCategoryTables, getCategoryColorClass, toggleResultCategory, populateCategoryFilter, applySingleCategoryFilter, applyVariationCategoryFilter, applySimpleCategoryFilter, renderCategoryTablesFiltered, renderSimpleResultFiltered, renderSimplePageOrderToContainer, renderSimpleCategoryOrderToContainer, clearResultViewer, renderSimpleResult, renderSimplePageOrder, renderSimpleCategoryOrder, getCheckKind, getSimpleCategoryColor });

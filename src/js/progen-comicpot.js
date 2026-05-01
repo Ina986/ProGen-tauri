@@ -46,6 +46,19 @@ let cpNotificationEl, cpNotificationInner;
 let cpResultPanelEl, cpResultPanelBody, cpEditorColumn, cpResizeHandle;
 let cpBtnTogglePanel, cpPanelSep, cpPanelTabVariation, cpPanelTabSimple, cpPanelCategoryFilter;
 
+function cpEnsureCalibrationButton() {
+    const saveAsButton = document.getElementById('cpBtnSaveAs');
+    if (!saveAsButton || document.getElementById('cpBtnCalibrationData')) return;
+
+    const button = document.createElement('button');
+    button.id = 'cpBtnCalibrationData';
+    button.className = 'cp-toolbar-btn';
+    button.title = '校正データを開く';
+    button.innerHTML = '<span class="cp-toolbar-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path><rect x="9" y="3" width="6" height="4" rx="1"></rect><path d="M9 14l2 2 4-4"></path></svg></span>校正データ';
+    button.addEventListener('click', cpLoadCalibrationData);
+    saveAsButton.insertAdjacentElement('afterend', button);
+}
+
 function cpInitDomRefs() {
     cpEditTextArea = document.getElementById('cpEditTextArea');
     cpSelectModeEl = document.getElementById('cpSelectMode');
@@ -80,6 +93,7 @@ function cpInitDomRefs() {
 function goToComicPotEditor(source, options) {
     cpSourcePage = source || 'extraction';
     cpInitDomRefs();
+    cpEnsureCalibrationButton();
 
     const editorPage = document.getElementById('comicPotEditorPage');
 
@@ -1055,8 +1069,27 @@ function _convertBridgeItems(items) {
 }
 
 // ===== 校正結果JSON読み込み =====
-function cpLoadResultJson() {
+function cpLoadCalibrationData() {
+    const currentLabel = document.getElementById('proofreadingLabelSelect')?.value
+        || document.getElementById('labelSelector')?.value
+        || '';
+
+    const mappedLabel = window.labelToTxtFolderMapping?.[currentLabel] || currentLabel || '';
+    if (typeof window.openCalibrationFolderPickerForLoad === 'function') {
+        window.openCalibrationFolderPickerForLoad({
+            autoExpandFolder: mappedLabel,
+            onFileSelect: (filePath) => {
+                _loadJsonFromPath(filePath);
+            },
+        });
+        return;
+    }
+
     cpOpenJsonBrowser();
+}
+
+function cpLoadResultJson() {
+    cpLoadCalibrationData();
 }
 
 async function _loadJsonFromPath(filePath) {
@@ -2374,7 +2407,7 @@ function cpSyncToPage(pageNum) {
 }
 
 // ES Module exports
-export { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder };
+export { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder });
+Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder });
