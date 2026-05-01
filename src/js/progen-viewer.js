@@ -28,6 +28,7 @@ const VIEWER_PREVIEW_MAX_SIZE = 2000;
 let viewerIsLoading = false;
 let viewerPageSyncEnabled = false;
 let viewerPdfDocCache = new Map(); // pdfPath -> PDFDocumentProxy
+let viewerPdfBinaryCache = new Map(); // pdfPath -> Uint8Array
 
 // ===== DOM参照 =====
 function _vEl(id) { return document.getElementById(id); }
@@ -45,10 +46,7 @@ async function _expandPdfFiles(files) {
             continue;
         }
         try {
-            const lib = await _ensurePdfJs();
-            const assetUrl = window.convertFileSrc(file.path);
-            const pdf = await lib.getDocument(assetUrl).promise;
-            viewerPdfDocCache.set(file.path, pdf);
+            const pdf = await _loadPdfDocument(file.path);
             for (let p = 1; p <= pdf.numPages; p++) {
                 expanded.push({
                     name: file.name + ' (p.' + p + '/' + pdf.numPages + ')',
@@ -73,11 +71,17 @@ async function cpViewerSetFiles(files, folderPath) {
     viewerCurrentIndex = 0;
     viewerImageCache.clear();
     viewerPdfDocCache.clear();
+    viewerPdfBinaryCache.clear();
     _showViewerCanvas();
 
     // PDFが含まれていればページ展開
     const hasPdf = files.some(f => _isPdf(f.name));
     viewerFiles = hasPdf ? await _expandPdfFiles(files) : files;
+    if (viewerFiles.length === 0) {
+        _vEl('cpViewerFilename').textContent = 'PDFの読み込みに失敗しました';
+        _vEl('cpViewerCounter').textContent = '';
+        return;
+    }
 
     loadViewerImage(0);
 }
@@ -198,13 +202,7 @@ async function loadViewerImage(index) {
 
 // ===== PDFページレンダリング =====
 async function _renderPdfPage(pdfPath, pageNum) {
-    let pdf = viewerPdfDocCache.get(pdfPath);
-    if (!pdf) {
-        const lib = await _ensurePdfJs();
-        const assetUrl = window.convertFileSrc(pdfPath);
-        pdf = await lib.getDocument(assetUrl).promise;
-        viewerPdfDocCache.set(pdfPath, pdf);
-    }
+    const pdf = await _loadPdfDocument(pdfPath);
     const page = await pdf.getPage(pageNum);
     const scale = VIEWER_PREVIEW_MAX_SIZE / Math.max(page.view[2], page.view[3]);
     const viewport = page.getViewport({ scale: Math.min(scale, 2) });
@@ -217,6 +215,32 @@ async function _renderPdfPage(pdfPath, pageNum) {
 }
 
 // ===== フロントエンドURLキャッシュ管理 =====
+async function _loadPdfDocument(pdfPath) {
+    let pdf = viewerPdfDocCache.get(pdfPath);
+    if (pdf) return pdf;
+
+    const lib = await _ensurePdfJs();
+
+    try {
+        let bytes = viewerPdfBinaryCache.get(pdfPath);
+        if (!bytes) {
+            const response = await fetch(window.convertFileSrc(pdfPath));
+            if (!response.ok) {
+                throw new Error('Failed to fetch PDF: ' + response.status);
+            }
+            bytes = new Uint8Array(await response.arrayBuffer());
+            viewerPdfBinaryCache.set(pdfPath, bytes);
+        }
+        pdf = await lib.getDocument({ data: bytes }).promise;
+    } catch (fetchError) {
+        console.warn('PDF binary load fallback:', pdfPath, fetchError);
+        pdf = await lib.getDocument(window.convertFileSrc(pdfPath)).promise;
+    }
+
+    viewerPdfDocCache.set(pdfPath, pdf);
+    return pdf;
+}
+
 function _cacheSet(path, result, assetUrl) {
     if (viewerImageCache.size >= VIEWER_CACHE_MAX) {
         const firstKey = viewerImageCache.keys().next().value;
