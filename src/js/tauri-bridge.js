@@ -68,6 +68,9 @@
         // COMIC-Bridgeを起動
         launchComicBridge: (jsonFilePath) => invoke('launch_comic_bridge', { jsonFilePath }),
 
+        // MojiQを起動して校正データJSONを渡す
+        launchMojiqWithCalibration: (jsonFilePath) => invoke('launch_mojiq_with_calibration', { jsonFilePath }),
+
         // COMIC-POTハンドオフ受信（push通知）
         onComicPotHandoff: (callback) => {
             listen('comicpot-handoff', (event) => callback(event.payload));

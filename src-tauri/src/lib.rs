@@ -836,6 +836,108 @@ fn launch_comic_bridge(json_file_path: String) -> serde_json::Value {
     }
 }
 
+// MojiQ.exe を Program Files / LocalAppData / Desktop の順に探す
+fn find_mojiq_path() -> Option<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+
+    if let Ok(program_files) = std::env::var("ProgramFiles") {
+        candidates.push(
+            PathBuf::from(&program_files)
+                .join("MojiQ")
+                .join("MojiQ.exe"),
+        );
+    }
+
+    if let Ok(program_files_x86) = std::env::var("ProgramFiles(x86)") {
+        candidates.push(
+            PathBuf::from(&program_files_x86)
+                .join("MojiQ")
+                .join("MojiQ.exe"),
+        );
+    }
+
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let base = PathBuf::from(&local_app_data).join("Programs");
+        candidates.push(base.join("MojiQ").join("MojiQ.exe"));
+        candidates.push(base.join("mojiq").join("MojiQ.exe"));
+    }
+
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        let desktop = PathBuf::from(&user_profile).join("Desktop");
+        // 直下: Desktop\MojiQ\dist\win-unpacked\MojiQ.exe
+        candidates.push(
+            desktop
+                .join("MojiQ")
+                .join("dist")
+                .join("win-unpacked")
+                .join("MojiQ.exe"),
+        );
+        // Desktop\<entry>\... をスキャン（MojiQ_開発, ver_X.XX, MojiQ など）
+        if let Ok(entries) = std::fs::read_dir(&desktop) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name_str = name.to_string_lossy();
+                if name_str.starts_with("ver_")
+                    || name_str.starts_with("MojiQ_")
+                    || name_str == "MojiQ"
+                {
+                    let base = entry.path();
+                    // <entry>\MojiQ\dist\win-unpacked\MojiQ.exe
+                    candidates.push(
+                        base.join("MojiQ")
+                            .join("dist")
+                            .join("win-unpacked")
+                            .join("MojiQ.exe"),
+                    );
+                    // <entry>\dist\win-unpacked\MojiQ.exe (例: Desktop\MojiQ\dist\...)
+                    candidates.push(
+                        base.join("dist")
+                            .join("win-unpacked")
+                            .join("MojiQ.exe"),
+                    );
+                    // <entry>\ver_X.XX\MojiQ\dist\win-unpacked\MojiQ.exe
+                    // 例: Desktop\MojiQ_開発\ver_2.26\MojiQ\dist\win-unpacked\MojiQ.exe
+                    if let Ok(sub_entries) = std::fs::read_dir(&base) {
+                        for sub in sub_entries.flatten() {
+                            let sub_name = sub.file_name();
+                            let sub_name_str = sub_name.to_string_lossy();
+                            if sub_name_str.starts_with("ver_") {
+                                candidates.push(
+                                    sub.path()
+                                        .join("MojiQ")
+                                        .join("dist")
+                                        .join("win-unpacked")
+                                        .join("MojiQ.exe"),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    candidates.into_iter().find(|path| path.exists())
+}
+
+#[tauri::command]
+fn launch_mojiq_with_calibration(json_file_path: String) -> serde_json::Value {
+    let exe_path = match find_mojiq_path() {
+        Some(p) => p,
+        None => {
+            return serde_json::json!({ "success": false, "error": "MojiQ\u{304C}\u{898B}\u{3064}\u{304B}\u{308A}\u{307E}\u{305B}\u{3093}。MojiQをインストールしてください。" });
+        }
+    };
+    // `=` 区切り形式で渡す。second-instance の commandLine 配列で Electron/Chromium が
+    // `--allow-file-access-from-files` 等の内部フラグを我々の引数の直後に注入し
+    // パスを取り逃がす不具合を防ぐ。
+    let arg = format!("--calibration-json={}", json_file_path);
+    match Command::new(&exe_path).arg(&arg).spawn() {
+        Ok(_) => serde_json::json!({ "success": true }),
+        Err(e) => serde_json::json!({ "success": false, "error": e.to_string() }),
+    }
+}
+
 #[tauri::command]
 async fn respond_to_update(accepted: bool, app: tauri::AppHandle) {
     if !accepted {
@@ -1647,6 +1749,7 @@ pub fn run() {
             print_to_pdf,
             save_calibration_data,
             launch_comic_bridge,
+            launch_mojiq_with_calibration,
             get_comicpot_handoff,
             respond_to_update,
             list_image_files,
