@@ -537,7 +537,7 @@ function updateProofreadingCheckItems() {
         container.innerHTML = `
             <div class="proofreading-check-header">
                 <span class="proofreading-check-icon"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span></span>
-                <h4>提案チェック項目（10項目）</h4>
+                <h4>提案チェック項目（14項目）</h4>
             </div>
             <div class="proofreading-check-list">
                 <div class="proofreading-check-item variation">
@@ -569,6 +569,18 @@ function updateProofreadingCheckItems() {
                 </div>
                 <div class="proofreading-check-item variation">
                     <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span> 未成年表現チェック
+                </div>
+                <div class="proofreading-check-item variation">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></span> 話の流れの矛盾
+                </div>
+                <div class="proofreading-check-item variation">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h10"/><path d="M4 17h16"/><path d="M15 12h5"/></svg></span> 重言・同語反復
+                </div>
+                <div class="proofreading-check-item variation">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9"/><path d="M17 7h3"/><path d="M4 12h16"/><path d="M4 17h6"/><path d="M14 17h6"/></svg></span> 単語途中の改行
+                </div>
+                <div class="proofreading-check-item variation">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M2 10a8 8 0 1 1 16 0c0 2.6-1.2 4.4-3 6H7c-1.8-1.6-3-3.4-3-6z"/></svg></span> 日本語としての違和感
                 </div>
             </div>
         `;

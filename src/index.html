@@ -391,7 +391,7 @@
                     <button class="proofreading-mode-btn" data-mode="variation" onclick="switchProofreadingMode('variation')">
                         <span class="mode-icon"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></span></span>
                         <span class="mode-label"><span class="mode-label-main">提案</span><span class="mode-label-sub">チェック</span></span>
-                        <span class="mode-desc">表記・固有名詞・専門用語（10項目）</span>
+                        <span class="mode-desc">表記・固有名詞・文章品質（14項目）</span>
                     </button>
                 </div>
             </div>
@@ -629,12 +629,12 @@
 <div id="variationCheckModal" class="modal-overlay">
     <div class="modal-content" style="max-width:700px;">
         <div class="modal-header" >
-            <span>提案チェック（項目1〜10）</span>
+            <span>提案チェック（項目1〜14）</span>
             <span class="close-modal" onclick="closeVariationCheckModal()">✕</span>
         </div>
         <div class="modal-body">
             <p style="margin-bottom:15px; color:#666;">
-                チェック項目1〜10を実行するプロンプトを生成します。<br>
+                チェック項目1〜14を実行するプロンプトを生成します。<br>
                 校正対象のセリフテキストを読み込んでからGeminiで開いてください。
             </p>
             <div style="margin-bottom:15px; padding:12px; background:var(--ink-blue-light); border-radius:8px; border-left:4px solid var(--ink-blue);">
@@ -650,6 +650,10 @@
                     <li><strong>8. 固有名詞・商標</strong> - 企業名・製品名・サービス名等</li>
                     <li><strong>9. 専門用語・事実の正確性</strong> - 法律・医療・科学等の誤用</li>
                     <li><strong>10. 未成年表現チェック</strong> - 未成年犯罪・未成年への性的表現</li>
+                    <li><strong>11. 話の流れの矛盾</strong> - 前後関係・時系列・状況の食い違い</li>
+                    <li><strong>12. 重言・同語反復</strong> - 意味の重複や同じ言葉の繰り返し</li>
+                    <li><strong>13. 単語途中の改行</strong> - 単語・固有名詞の途中での不自然な改行</li>
+                    <li><strong>14. 日本語としての違和感</strong> - 助詞・語順・係り受けの不自然さ</li>
                 </ul>
             </div>
             <div style="margin-bottom:15px;">
