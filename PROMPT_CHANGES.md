@@ -1,5 +1,7 @@
 # プロンプト関連変更メモ
 
+更新日: 2026-05-15
+
 このファイルは、プロンプト生成・校正チェックまわりで行った変更内容と該当箇所をまとめたものです。
 
 ## 抽出・整形プロンプト
@@ -96,4 +98,3 @@
 - `src/js/progen-check-simple.js`: `node --input-type=module --check`
 - `src/js/progen-check-variation.js`: `node --input-type=module --check`
 - `src/js/progen-proofreading.js`: `node --input-type=module --check`
-
