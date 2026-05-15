@@ -177,6 +177,16 @@ function generateSimpleCheckPromptWithText(manuscriptText) {
 
         <execution_details>
             <iterations>5</iterations>
+            <reasoning_policy critical="true">
+                <rule>5回のチェックでは、速度や簡略化よりも検出精度を優先し、各回で十分な内部推論と照合時間を使ってください。</rule>
+                <rule>2回目〜5回目も前回結果の流用だけで済ませず、必ず原稿全体を再確認し、ページ番号・セリフ抜粋・指摘内容の妥当性を検証してください。</rule>
+                <rule>2回目・3回目・4回目をまとめて処理したり、形式だけの「該当なし」で流したりしないでください。各回を独立したフルチェックとして実行してください。</rule>
+                <rule>各回では、全ページを最初から最後まで再スキャンし、3項目すべてについて新規候補の有無を確認してください。途中回のチェック密度を下げることは禁止です。</rule>
+                <rule>3回目・4回目は特に省略されやすいため、1回目・2回目と同じ粒度でページ番号、セリフ抜粋、指摘内容を照合してください。</rule>
+                <rule>各回の見直しが薄い、前回結果を要約しただけ、または全ページ再確認を行っていない場合は、チェック未完了として扱い、出力前にやり直してください。</rule>
+                <rule>「該当なし」と報告する場合も、該当箇所がないことを確認するための見直しを省略しないでください。</rule>
+                <rule>内部推論や検証過程の文章は出力せず、指定されたテーブル形式の結果のみを出力してください。</rule>
+            </reasoning_policy>
             <output_requirement>
                 原稿全体に対して、指定された3つのチェック項目すべて（網羅的）の視点から、チェックを合計5回繰り返してください。
                 この繰り返しは、チェック漏れを防ぐための「見直し」プロセスとして機能させます。
@@ -391,6 +401,16 @@ function generateSimpleCheckWithRulesPromptWithText(manuscriptText) {
 
         <execution_details>
             <iterations>5</iterations>
+            <reasoning_policy critical="true">
+                <rule>5回のチェックでは、速度や簡略化よりも検出精度を優先し、各回で十分な内部推論と照合時間を使ってください。</rule>
+                <rule>2回目〜5回目も前回結果の流用だけで済ませず、必ず原稿全体を再確認し、ページ番号・セリフ抜粋・指摘内容の妥当性を検証してください。</rule>
+                <rule>2回目・3回目・4回目をまとめて処理したり、形式だけの「該当なし」で流したりしないでください。各回を独立したフルチェックとして実行してください。</rule>
+                <rule>各回では、全ページを最初から最後まで再スキャンし、すべての項目について新規候補の有無を確認してください。途中回のチェック密度を下げることは禁止です。</rule>
+                <rule>3回目・4回目は特に省略されやすいため、1回目・2回目と同じ粒度でページ番号、セリフ抜粋、指摘内容を照合してください。</rule>
+                <rule>各回の見直しが薄い、前回結果を要約しただけ、または全ページ再確認を行っていない場合は、チェック未完了として扱い、出力前にやり直してください。</rule>
+                <rule>「該当なし」と報告する場合も、該当箇所がないことを確認するための見直しを省略しないでください。</rule>
+                <rule>内部推論や検証過程の文章は出力せず、指定されたテーブル形式の結果のみを出力してください。</rule>
+            </reasoning_policy>
             <output_requirement>
                 原稿全体に対して、指定されたチェック項目すべて（網羅的）の視点から、チェックを合計5回繰り返してください。
                 この繰り返しは、チェック漏れを防ぐための「見直し」プロセスとして機能させます。
@@ -533,8 +553,14 @@ ${getCharacterListXmlForCheck()}
                 </item>
                 <item id="7">
                     <name>熟字訓チェック</name>
-                    <description>熟字訓（複数の漢字に特殊な読みを当てる語）を検出し、ルビを振るべきか確認します。</description>
+                    <description>熟字訓（複数の漢字に特殊な読みを当てる語）を検出し、ルビを振るべきか確認します。常用漢字だけで構成される語でも、語全体に特殊な読みが割り当てられている場合は必ず検出対象にしてください。</description>
                     <examples>
+                        <example><word>流石</word><reading>さすが</reading></example>
+                        <example><word>可笑しい</word><reading>おかしい</reading></example>
+                        <example><word>欠伸</word><reading>あくび</reading></example>
+                        <example><word>台詞</word><reading>せりふ</reading></example>
+                        <example><word>大袈裟</word><reading>おおげさ</reading></example>
+                        <example><word>意気地</word><reading>いくじ</reading></example>
                         <example><word>海老</word><reading>えび</reading></example>
                         <example><word>時雨</word><reading>しぐれ</reading></example>
                         <example><word>紅葉</word><reading>もみじ</reading></example>
@@ -549,12 +575,14 @@ ${getCharacterListXmlForCheck()}
                     <detection_target>
                         <case>一般的でない読み方を持つ熟字訓（読者が読めない可能性がある語）</case>
                         <case>初出の熟字訓でルビが付いていないもの</case>
+                        <case>「流石（さすが）」のように、個々の漢字は常用漢字でも、語全体として通常の音読み・訓読みの組み合わせでは読みにくい語</case>
+                        <case>常用外漢字チェックでは検出されないが、読者に読みを補助した方がよい熟字訓・当て字・特殊読みの語</case>
                     </detection_target>
                     <exclusion>
                         <case>「今日」「明日」「昨日」「大人」「下手」「上手」など日常的に使用され誰でも読める語</case>
                         <case>既にルビが振られている語</case>
                     </exclusion>
-                    <note>読者層（対象年齢）を考慮し、ルビを振るべきかどうかを判断してください。漫画の読者が小中学生の場合は基準を厳しく、成人向けの場合は緩めに判断してください。</note>
+                    <note>常用外漢字の有無だけで判断しないでください。熟字訓は語単位で確認し、「流石」のような頻出語も初出時はルビ要否の確認対象にしてください。読者層（対象年齢）を考慮し、ルビを振るべきかどうかを判断してください。漫画の読者が小中学生の場合は基準を厳しく、成人向けの場合は緩めに判断してください。</note>
                 </item>${nonJoyoCheckXml}
             </section>
 
@@ -612,13 +640,17 @@ ${rulesXml}
                     <question>登録されている人物名と異なる表記が見落とされていないか？</question>
                     <on_fail>登録人物名リストと照合して追加する</on_fail>
                 </item>
+                <item id="V7">
+                    <question>「流石」「可笑しい」「欠伸」など、常用漢字だけで構成される熟字訓・特殊読みを見落としていないか？</question>
+                    <on_fail>原稿全体を語単位で再スキャンし、熟字訓チェックとして追加する</on_fail>
+                </item>
             </validation_checklist>
 
             <execution>すべての項目がOKになるまで内部で修正を繰り返し、完成版のみを出力してください。</execution>
         </self_check>
 
         <output_rules>
-            <rule>上記の自己点検（V1〜V6）の検証過程は出力しないでください。</rule>
+            <rule>上記の自己点検（V1〜V7）の検証過程は出力しないでください。</rule>
             <rule>1回目〜5回目の各テーブルと最終統合リストは、必ず出力してください。</rule>
         </output_rules>
     </process_instruction>
