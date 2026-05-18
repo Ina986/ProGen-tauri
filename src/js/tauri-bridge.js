@@ -107,6 +107,109 @@
     const { getCurrentWindow } = window.__TAURI__.window;
     const currentWindow = getCurrentWindow();
 
+    // ===== カスタムタイトルバー用ウインドウコントロール =====
+    window.winMinimize = () => currentWindow.minimize();
+    window.winToggleMaximize = async () => {
+        const maximized = await currentWindow.isMaximized();
+        if (maximized) currentWindow.unmaximize();
+        else currentWindow.maximize();
+    };
+    window.winClose = () => currentWindow.close();
+    // 最大化状態が変わったら .is-maximized クラスを body に付与
+    currentWindow.onResized(async () => {
+        const m = await currentWindow.isMaximized();
+        document.body.classList.toggle('is-maximized', m);
+    });
+    // 初期状態反映
+    currentWindow.isMaximized().then((m) => {
+        document.body.classList.toggle('is-maximized', m);
+    });
+
+    // ===== ヘッダーへアプリアイコン (左端) と ウインドウコントロール (右端) を注入 =====
+    // 対象セレクタ: 各ヘッダー (.header-bar, .proofreading-header, .result-viewer-header, .cp-header)
+    //              + ランディング画面 (.landing-screen)
+    function buildAppIcon() {
+        const img = document.createElement('img');
+        img.src = 'logo/progen_p_icon.png';
+        img.alt = '';
+        img.className = 'header-app-icon';
+        img.setAttribute('data-tauri-drag-region', '');
+        return img;
+    }
+    function buildWindowControls() {
+        const wrap = document.createElement('div');
+        wrap.className = 'window-controls';
+        wrap.innerHTML = `
+            <button class="win-ctrl-btn" onclick="winMinimize()" title="最小化" aria-label="最小化">
+                <svg viewBox="0 0 10 10" width="10" height="10"><rect x="0" y="4.5" width="10" height="1" fill="currentColor"/></svg>
+            </button>
+            <button class="win-ctrl-btn" onclick="winToggleMaximize()" title="最大化" aria-label="最大化">
+                <svg class="win-ctrl-maximize-icon" viewBox="0 0 10 10" width="10" height="10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1"/></svg>
+                <svg class="win-ctrl-restore-icon" viewBox="0 0 10 10" width="10" height="10"><rect x="2.5" y="0.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1"/><rect x="0.5" y="2.5" width="7" height="7" fill="var(--titlebar-bg, #fff)" stroke="currentColor" stroke-width="1"/></svg>
+            </button>
+            <button class="win-ctrl-btn win-ctrl-close" onclick="winClose()" title="閉じる" aria-label="閉じる">
+                <svg viewBox="0 0 10 10" width="10" height="10"><line x1="1" y1="1" x2="9" y2="9" stroke="currentColor" stroke-width="1"/><line x1="9" y1="1" x2="1" y2="9" stroke="currentColor" stroke-width="1"/></svg>
+            </button>
+        `;
+        return wrap;
+    }
+
+    // 子孫を再帰的にドラッグ領域化する。
+    // インタラクティブ要素 (button/input/select/textarea/a) とその子孫はスキップ。
+    // window-controls 配下と data-tauri-drag-region="false" の要素もスキップ。
+    function markDraggableRecursive(el) {
+        if (!el || el.nodeType !== 1) return;
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea' || tag === 'a') return;
+        if (el.classList && el.classList.contains('window-controls')) return;
+        if (el.classList && el.classList.contains('win-ctrl-btn')) return;
+        if (el.getAttribute && el.getAttribute('data-tauri-drag-region') === 'false') return;
+        el.setAttribute('data-tauri-drag-region', '');
+        Array.from(el.children).forEach(markDraggableRecursive);
+    }
+
+    function injectHeaderTitlebar(el) {
+        if (!el || el.dataset.titlebarInjected === '1') return;
+        el.dataset.titlebarInjected = '1';
+        el.insertBefore(buildAppIcon(), el.firstChild);
+        el.appendChild(buildWindowControls());
+        markDraggableRecursive(el);
+    }
+
+    // ランディング画面用: ヘッダー(.landing-header-bar)にウインドウコントロールのみ注入 / 全面ドラッグ可能
+    function injectLandingTitlebar(landing) {
+        if (!landing || landing.dataset.titlebarInjected === '1') return;
+        landing.dataset.titlebarInjected = '1';
+        const headerBar = landing.querySelector('.landing-header-bar');
+        if (headerBar) {
+            headerBar.appendChild(buildWindowControls());
+        } else {
+            // フォールバック: ヘッダーが無い場合は従来通り右上に絶対配置
+            const controls = buildWindowControls();
+            controls.classList.add('landing-window-controls');
+            landing.appendChild(controls);
+        }
+        // ランディング画面全体を再帰的にドラッグ領域化（インタラクティブ要素は自動スキップ）
+        markDraggableRecursive(landing);
+    }
+
+    function injectAllTitlebars() {
+        // 通常ヘッダー (.landing-header-bar は landing 専用パスで処理するため除外)
+        ['.header-bar:not(.landing-header-bar)', '.proofreading-header', '.result-viewer-header', '.cp-header'].forEach((sel) => {
+            document.querySelectorAll(sel).forEach(injectHeaderTitlebar);
+        });
+        // ランディング画面
+        document.querySelectorAll('.landing-screen').forEach(injectLandingTitlebar);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', injectAllTitlebars);
+    } else {
+        injectAllTitlebars();
+    }
+    // 動的に挿入された場合のフォールバック
+    window.__injectAllTitlebars = injectAllTitlebars;
+
     currentWindow.onDragDropEvent((event) => {
         const payload = event.payload;
 
@@ -134,4 +237,23 @@
         }
         return originalOpen.call(window, url, target, features);
     };
+
+    // ===== Ctrl+A ブロック =====
+    // アプリ内テキストがウインドウ全体で選択されるのを防ぐ。
+    // 入力欄（input/textarea/contenteditable）内では従来通り動作させる。
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        if (e.key !== 'a' && e.key !== 'A') return;
+        const t = e.target;
+        if (!t) { e.preventDefault(); return; }
+        const tag = (t.tagName || '').toLowerCase();
+        // type="checkbox" 等の編集対象でない input は除外
+        const editableInputType = (tag === 'input')
+            ? !['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file'].includes((t.type || 'text').toLowerCase())
+            : false;
+        const isEditable = tag === 'textarea' || editableInputType || t.isContentEditable;
+        if (!isEditable) {
+            e.preventDefault();
+        }
+    }, true); // capture phase で先回りして既存ハンドラに食われる前に判定
 })();

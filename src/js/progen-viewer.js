@@ -26,7 +26,8 @@ let viewerImageCache = new Map(); // path -> { dataUrl, originalWidth, originalH
 const VIEWER_CACHE_MAX = 10;
 const VIEWER_PREVIEW_MAX_SIZE = 2000;
 let viewerIsLoading = false;
-let viewerPageSyncEnabled = false;
+let viewerPageSyncEnabled = true; // 既定 ON（<<NPage>> マーカ付きテキストでは連動が期待されるため）
+window.viewerPageSyncEnabled = viewerPageSyncEnabled; // 他モジュールから参照可能に
 let viewerPdfDocCache = new Map(); // pdfPath -> PDFDocumentProxy
 let viewerPdfBinaryCache = new Map(); // pdfPath -> Uint8Array
 
@@ -78,8 +79,7 @@ async function cpViewerSetFiles(files, folderPath) {
     const hasPdf = files.some(f => _isPdf(f.name));
     viewerFiles = hasPdf ? await _expandPdfFiles(files) : files;
     if (viewerFiles.length === 0) {
-        _vEl('cpViewerFilename').textContent = 'PDFの読み込みに失敗しました';
-        _vEl('cpViewerCounter').textContent = '';
+        if (window.cpShowNotify) window.cpShowNotify('PDFの読み込みに失敗しました', '#ef4444');
         return;
     }
 
@@ -94,14 +94,13 @@ async function cpViewerOpenFolder() {
     viewerFolderPath = result.folderPath;
     const listResult = await window.electronAPI.listImageFiles(viewerFolderPath);
     if (!listResult.success || listResult.files.length === 0) {
-        _vEl('cpViewerFilename').textContent = '画像ファイルが見つかりません';
-        _vEl('cpViewerCounter').textContent = '';
+        if (window.cpShowNotify) window.cpShowNotify('画像ファイルが見つかりません', '#ef4444');
         return;
     }
     cpViewerSetFiles(listResult.files, result.folderPath);
 }
 
-// ===== ドロップゾーン ↔ キャンバス 切替 =====
+// ===== ドロップゾーン / キャンバス 切替 =====
 function _showViewerCanvas() {
     const dropzone = _vEl('cpViewerDropzone');
     const canvas = _vEl('cpViewerCanvas');
@@ -126,13 +125,14 @@ async function loadViewerImage(index) {
     const counterEl = _vEl('cpViewerCounter');
     const loadingEl = _vEl('cpViewerLoading');
 
-    filenameEl.textContent = file.name;
-    counterEl.textContent = (index + 1) + ' / ' + viewerFiles.length;
+    if (filenameEl) filenameEl.textContent = file.name;
+    if (counterEl) counterEl.textContent = (index + 1) + ' / ' + viewerFiles.length;
     _updateNavArrows();
     _updateViewerMeta(null);
 
     // ページ同期（テキストメモ連動）
-    if (viewerPageSyncEnabled && window.cpSyncToPage) {
+    // _cpViewerSyncSuppress が立っているときは textarea→ビューア の逆同期由来なのでスキップ
+    if (viewerPageSyncEnabled && window.cpSyncToPage && !window._cpViewerSyncSuppress) {
         window.cpSyncToPage(index + 1);
     }
 
@@ -172,7 +172,8 @@ async function loadViewerImage(index) {
         } catch (e) {
             viewerIsLoading = false;
             if (loadingEl) loadingEl.style.display = 'none';
-            filenameEl.textContent = file.name + ' (PDF読み込みエラー)';
+            if (filenameEl) filenameEl.textContent = file.name + ' (PDF読み込みエラー)';
+            if (window.cpShowNotify) window.cpShowNotify('PDF読み込みエラー: ' + file.name, '#ef4444');
             img.style.opacity = '1';
         }
         return;
@@ -184,7 +185,8 @@ async function loadViewerImage(index) {
     if (loadingEl) loadingEl.style.display = 'none';
 
     if (!result.success) {
-        filenameEl.textContent = file.name + ' (読み込みエラー)';
+        if (filenameEl) filenameEl.textContent = file.name + ' (読み込みエラー)';
+        if (window.cpShowNotify) window.cpShowNotify('読み込みエラー: ' + file.name, '#ef4444');
         img.style.opacity = '1';
         return;
     }
@@ -278,6 +280,10 @@ function _updateViewerMeta(data) {
 function _updateNavArrows() {
     const left = _vEl('cpViewerNavLeft');
     const right = _vEl('cpViewerNavRight');
+    const hasFiles = viewerFiles.length > 0;
+    // 未読込時は親に印を付けて CSS 側で display:none、読込済みのみ hover で出現
+    const main = document.querySelector('.cp-viewer-main');
+    if (main) main.classList.toggle('has-files', hasFiles);
     if (left) left.disabled = viewerCurrentIndex <= 0;
     if (right) right.disabled = viewerCurrentIndex >= viewerFiles.length - 1;
 }
@@ -490,6 +496,12 @@ function cpViewerInit() {
     setupViewerDrag();
     setupViewerDragDrop();
     document.addEventListener('keydown', handleViewerKeydown);
+    // ページ連動トグルの初期表示状態を viewerPageSyncEnabled に合わせる
+    const btn = _vEl('cpViewerSyncToggle');
+    if (btn) {
+        btn.classList.toggle('active', viewerPageSyncEnabled);
+        btn.title = viewerPageSyncEnabled ? 'ページ連動 ON' : 'ページ連動 OFF';
+    }
 }
 
 if (document.readyState === 'loading') {
@@ -501,6 +513,7 @@ if (document.readyState === 'loading') {
 // ===== ページ同期トグル =====
 function cpViewerTogglePageSync() {
     viewerPageSyncEnabled = !viewerPageSyncEnabled;
+    window.viewerPageSyncEnabled = viewerPageSyncEnabled; // textarea 側から参照される
     const btn = _vEl('cpViewerSyncToggle');
     if (btn) {
         btn.classList.toggle('active', viewerPageSyncEnabled);
@@ -512,7 +525,85 @@ function cpViewerTogglePageSync() {
     }
 }
 
-// ===== エクスポート =====
-export { cpViewerOpenFolder, cpViewerPrev, cpViewerNext, cpViewerZoom, cpViewerZoomFit, cpViewerSetFiles, cpViewerTogglePageSync };
+// ===== テキスト → ビューア 逆同期エントリ =====
+// pageNum (1-based) に対応する viewerFiles のインデックスを推定して表示。
+// ファイル順 = ページ順とみなす（PsDesign と同じ素朴な対応）。
+// ===== ファイル入力経由で受け取った PDF (File オブジェクト) をビューアにロード =====
+// <input type="file"> 経由ではファイルパスが取れないため、ArrayBuffer を直接読み込み、
+// viewerPdfBinaryCache に登録してから PDF を展開する。
+// （cpViewerSetFiles はキャッシュをクリアするため使えず、内部処理を直接実行）
+async function cpViewerLoadPdfFile(file) {
+    if (!file) return false;
+    const bytes = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(new Uint8Array(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(file);
+    });
 
-Object.assign(window, { cpViewerOpenFolder, cpViewerPrev, cpViewerNext, cpViewerZoom, cpViewerZoomFit, cpViewerSetFiles, cpViewerTogglePageSync });
+    // 既存状態をクリア（cpViewerSetFiles と同等）
+    viewerFolderPath = '';
+    viewerCurrentIndex = 0;
+    viewerImageCache.clear();
+    viewerPdfDocCache.clear();
+    viewerPdfBinaryCache.clear();
+    _showViewerCanvas();
+
+    // バイトをキャッシュへ投入してから展開（_loadPdfDocument がディスクへフォールバックしない）
+    const synthPath = '__blob__/' + file.name + '#' + file.size + '#' + Date.now();
+    viewerPdfBinaryCache.set(synthPath, bytes);
+
+    const expanded = await _expandPdfFiles([{ name: file.name, path: synthPath, size: file.size }]);
+    if (expanded.length === 0) {
+        if (window.cpShowNotify) window.cpShowNotify('PDFの読み込みに失敗しました', '#ef4444');
+        return false;
+    }
+    viewerFiles = expanded;
+    await loadViewerImage(0);
+    return true;
+}
+
+// ===== ビューアの状態を完全リセット（読み込んだ画像・PDF・キャッシュ・表示を全クリア） =====
+function cpViewerReset() {
+    viewerFiles = [];
+    viewerCurrentIndex = -1;
+    viewerFolderPath = '';
+    viewerZoomLevel = 0;
+    viewerIsDragging = false;
+    viewerImageCache.clear();
+    viewerPdfDocCache.clear();
+    viewerPdfBinaryCache.clear();
+
+    const img = _vEl('cpViewerImage');
+    if (img) { img.removeAttribute('src'); img.style.transform = ''; }
+    const filenameEl = _vEl('cpViewerFilename');
+    if (filenameEl) filenameEl.textContent = 'ファイル未選択';
+    const counterEl = _vEl('cpViewerCounter');
+    if (counterEl) counterEl.textContent = '';
+    const metaEl = _vEl('cpViewerMeta');
+    if (metaEl) metaEl.textContent = '';
+    const zoomEl = _vEl('cpViewerZoomLevel');
+    if (zoomEl) zoomEl.textContent = 'Fit';
+    const loadingEl = _vEl('cpViewerLoading');
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    // ドロップゾーンに戻す
+    _showViewerDropzone();
+    // ナビ矢印を非表示状態に同期
+    _updateNavArrows();
+}
+
+function cpViewerJumpToPage(pageNum) {
+    if (!Array.isArray(viewerFiles) || viewerFiles.length === 0) return;
+    const idx = Math.max(0, Math.min(pageNum - 1, viewerFiles.length - 1));
+    if (idx === viewerCurrentIndex) return;
+    // suppress を立てて loadViewerImage 内の cpSyncToPage 二重発火を防ぐ
+    window._cpViewerSyncSuppress = true;
+    try { loadViewerImage(idx); }
+    finally { requestAnimationFrame(() => { window._cpViewerSyncSuppress = false; }); }
+}
+
+// ===== エクスポート =====
+export { cpViewerOpenFolder, cpViewerPrev, cpViewerNext, cpViewerZoom, cpViewerZoomFit, cpViewerSetFiles, cpViewerTogglePageSync, cpViewerJumpToPage, cpViewerReset, cpViewerLoadPdfFile };
+
+Object.assign(window, { cpViewerOpenFolder, cpViewerPrev, cpViewerNext, cpViewerZoom, cpViewerZoomFit, cpViewerSetFiles, cpViewerTogglePageSync, cpViewerJumpToPage, cpViewerReset, cpViewerLoadPdfFile });

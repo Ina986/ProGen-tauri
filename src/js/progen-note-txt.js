@@ -18,11 +18,6 @@ function openNoteGem(inputId) {
         dstId = 'symbol_edit_dst';
         srcLabel = '変換前';
         dstLabel = '変換後';
-    } else if (inputId === 'admin_edit_note') {
-        srcId = 'admin_edit_src';
-        dstId = 'admin_edit_dst';
-        srcLabel = '変換元';
-        dstLabel = '変換先';
     }
 
     const srcInput = document.getElementById(srcId);

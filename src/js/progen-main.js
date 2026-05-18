@@ -38,7 +38,6 @@ import './progen-check-simple.js';
 import './progen-check-variation.js';
 import './progen-proofreading.js';
 import './progen-json-browser.js';
-import './progen-admin.js';
 import './progen-note-txt.js';
 import './progen-result-viewer.js';
 import './progen-comicpot.js';
@@ -48,6 +47,27 @@ import './progen-viewer.js';
 window.init();
 window.initJsonFolderBrowser();
 window.initCalibrationFolderBrowser();
+
+// Load text handed off from PsDesign / COMIC-POT after startup.
+// Fresh launches use getComicPotHandoff(); already-running instances use the event.
+async function initComicPotHandoff() {
+    if (!window.electronAPI || typeof window.cpLoadFromHandoff !== 'function') return;
+    if (typeof window.electronAPI.onComicPotHandoff === 'function') {
+        window.electronAPI.onComicPotHandoff((data) => {
+            if (data) window.cpLoadFromHandoff(data);
+        });
+    }
+    if (typeof window.electronAPI.getComicPotHandoff === 'function') {
+        try {
+            const data = await window.electronAPI.getComicPotHandoff();
+            if (data) await window.cpLoadFromHandoff(data);
+        } catch (e) {
+            console.warn('COMIC-POT handoff read failed:', e);
+        }
+    }
+}
+
+initComicPotHandoff();
 
 // ドロップゾーンの初期化
 const txtUploadGroup = document.getElementById('txtUploadGroup');

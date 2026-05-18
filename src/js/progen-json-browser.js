@@ -131,7 +131,7 @@ async function startNewCreation(mode) {
     // JSONに保存ボタンを表示（新規作成なので「保存」）
     const saveBtn = document.getElementById('saveToJsonBtn');
     if (saveBtn) {
-        saveBtn.textContent = '保存';
+        saveBtn.textContent = '表記ルールを保存';
         saveBtn.style.display = 'inline-block';
     }
 
@@ -240,6 +240,21 @@ function clearLoadedJsonSelection() {
     if (jsonIndicator) jsonIndicator.style.display = 'none';
     if (jsonFilename) jsonFilename.textContent = '';
 
+    const selectorGroup = document.getElementById('labelSelectorGroup');
+    const displayGroup = document.getElementById('labelDisplayGroup');
+    const displayText = document.getElementById('labelDisplayText');
+    if (selectorGroup) selectorGroup.style.display = 'flex';
+    if (displayGroup) displayGroup.style.display = 'none';
+    if (displayText) displayText.textContent = '';
+
+    const selector = document.getElementById('labelSelector');
+    const selectorText = document.getElementById('labelSelectorText');
+    if (selectorText) {
+        const selectedLabel = selector ? selector.value : '';
+        selectorText.textContent = selectedLabel || '未選択';
+        selectorText.classList.toggle('unselected', !selectedLabel);
+    }
+
     const proofJsonIndicator = document.getElementById('proofreadingJsonIndicator');
     const proofJsonFilename = document.getElementById('proofreadingJsonFilename');
     if (proofJsonIndicator) proofJsonIndicator.style.display = 'none';
@@ -248,7 +263,7 @@ function clearLoadedJsonSelection() {
     const saveBtn = document.getElementById('saveToJsonBtn');
     const saveAsBtn = document.getElementById('saveAsJsonBtn');
     if (saveBtn) {
-        saveBtn.textContent = '保存';
+        saveBtn.textContent = '表記ルールを保存';
         saveBtn.style.display = 'inline-block';
     }
     if (saveAsBtn) {
@@ -603,6 +618,58 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
 
     } catch (error) {
         console.error('JSONファイルの読み込みに失敗:', error);
+        showToast('JSONファイルの読み込みに失敗しました: ' + error.message, 'error');
+    }
+}
+
+// ローカルのJSONファイルをネイティブダイアログで選択して読み込み
+async function selectLocalJsonFile(mode = 'extraction') {
+    if (!window.electronAPI || !window.electronAPI.openAndReadJsonDialog) {
+        showToast('この環境ではローカルJSON選択を使用できません', 'error');
+        return;
+    }
+
+    try {
+        const result = await window.electronAPI.openAndReadJsonDialog();
+        if (!result || result.canceled) return;
+
+        if (!result.success) {
+            showToast('JSONファイルの読み込みに失敗しました: ' + (result.error || '不明なエラー'), 'error');
+            return;
+        }
+
+        let data;
+        try {
+            data = JSON.parse(result.content);
+        } catch (error) {
+            showToast('JSONの解析に失敗しました: ' + error.message, 'error');
+            return;
+        }
+
+        const filePath = result.filePath || '';
+        const fileName = filePath.split(/[\\/]/).pop() || 'JSON';
+
+        jsonFolderBrowserMode = mode;
+        state.currentLoadedJson = data;
+        state.currentJsonPath = filePath;
+
+        const { fallbackLabel } = await processLoadedJson(data, fileName);
+
+        if (mode === 'proofreading') {
+            if (typeof goToProofreadingPageFromMain === 'function') {
+                goToProofreadingPageFromMain('simple');
+            }
+        } else if (mode === 'formatting') {
+            selectDataType('txt_only');
+        }
+
+        if (fallbackLabel) {
+            showToast(`"${fileName}" を読み込みました（表記ルール未登録のため、${fallbackLabel}のルールを表示しています）`, 'warning');
+        } else {
+            showToast(`"${fileName}" を読み込みました`, 'success');
+        }
+    } catch (error) {
+        console.error('ローカルJSONファイルの読み込みに失敗:', error);
         showToast('JSONファイルの読み込みに失敗しました: ' + error.message, 'error');
     }
 }
@@ -998,6 +1065,13 @@ async function processLoadedJson(data, fileName) {
 
     if (labelName) {
         // JSONにレーベル名がある場合：ドロップダウンを非表示、表示専用を表示
+        const selector = document.getElementById('labelSelector');
+        const selectorText = document.getElementById('labelSelectorText');
+        if (selector) selector.value = labelName;
+        if (selectorText) {
+            selectorText.textContent = labelName;
+            selectorText.classList.remove('unselected');
+        }
         if (selectorGroup) selectorGroup.style.display = 'none';
         if (displayGroup) displayGroup.style.display = 'flex';
         if (displayText) displayText.textContent = labelName;
@@ -1239,7 +1313,7 @@ function initJsonFolderBrowser() {
 
 
 // ES Module exports
-export { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser };
+export { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, selectLocalJsonFile, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser });
+Object.assign(window, { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, selectLocalJsonFile, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser });

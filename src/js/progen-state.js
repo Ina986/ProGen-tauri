@@ -62,9 +62,6 @@ export const state = {
     currentLoadedJson: null,
     currentJsonPath: '',
 
-    // 管理モード
-    isAdminMode: false,
-
     // JSON新規作成時のモード（'extraction' or 'proofreading'）
     pendingNewCreationMode: null,
 

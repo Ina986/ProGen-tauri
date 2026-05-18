@@ -346,15 +346,21 @@ function getOutputFormatXml() {
             <instruction>出力の先頭行に [COMIC-POT:${state.outputFormatSortMode}] ヘッダーを記述する</instruction>
             <instruction>ヘッダーの次の行に [${vol}巻] のように巻番号マーカーを記述する（巻数=${state.outputFormatVolume}、2桁ゼロ埋め）</instruction>
             <instruction>各ページの先頭に &lt;&lt;${startP}Page&gt;&gt;、&lt;&lt;${p2}Page&gt;&gt;… のように &lt;&lt;ページ番号Page&gt;&gt; 形式のページマーカーを付与する（開始ページ=${startP}）</instruction>
+            <instruction critical="true">【必須】添付された画像1枚、またはPDFの1ページを、必ず出力上の1ページとして扱う。複数ページ分のテキストを1つの &lt;&lt;XPage&gt;&gt; マーカー内にまとめない</instruction>
+            <instruction critical="true">【禁止】見開き・左右ページ・連続する2ページを1ページとして結合しない。ページが変わるたびに、テキスト量に関係なく次の &lt;&lt;XPage&gt;&gt; マーカーを必ず挿入する</instruction>
             <instruction>ページ間に「----------」は使用せず、&lt;&lt;XPage&gt;&gt; マーカーをページ区切りとする</instruction>
             <instruction critical="true">【必須】吹き出し（フキダシ）ごとに1行の空白行を入れて区切る。これは絶対に守ること。</instruction>
             <instruction>出力するテキストには、ダブルクォーテーションや行番号など、余分な情報を追記しない</instruction>
             <instruction>ページに抽出対象となるテキストが一切存在しない場合は、次のページマーカーが直後に続くようにする</instruction>
+            <instruction critical="true">【必須】出力コードブロックの言語表示は Plaintext とし、コードブロック内には指定されたCOMIC-POTヘッダー、巻マーカー、ページマーカー、セリフ本文、空行のみを含める</instruction>
+            <instruction critical="true">【禁止】コードブロック内にXML/HTML/Markdown風のタグ、属性、説明用ラベル、JSON、箇条書き、表、コメント、メタ情報を入れない</instruction>
+            <instruction critical="true">【禁止例】&lt;page&gt;、&lt;line&gt;、&lt;text&gt;、&lt;speech&gt;、&lt;balloon&gt;、&lt;dialogue&gt;、&lt;chunk&gt;、&lt;metadata&gt; のようなタグ形式で出力しない</instruction>
         </output_format>
         <citation_marker_removal>
             <instruction>出力テキストから以下のシステムタグを完全に削除すること：</instruction>
             <target>[cite:...]、[cite_end]、[source:...]など、角括弧で囲まれた参照タグ</target>
             <target>脚注番号や参照元のファイル番号</target>
+            <target>XML/HTML風タグ、属性、説明用ラベル、解析メモ、ページ説明、吹き出し番号、チャンク番号</target>
             <goal>人間が手書きで清書したかのような、システム的な注釈記号が一切ない純粋なテキストに仕上げる</goal>
         </citation_marker_removal>
         <example description="COMIC-POT形式の正しい出力例">
@@ -403,6 +409,10 @@ function getFinalOutputXml() {
         <checklist>
             <item>指定されたフォーマット・条件に完全に適合しているか</item>
             <item>校正ルールが正しく適用されているか</item>
+            <item>【重要】添付画像1枚またはPDF 1ページにつき、出力上も必ず1つのページとして区切られているか</item>
+            <item>【重要】2ページ分のテキストが1つの &lt;&lt;XPage&gt;&gt; マーカー内に混在していないか</item>
+            <item>【重要】出力コードブロック内にXML/HTML風タグ、属性、説明ラベル、JSON、表、箇条書きが混じっていないか</item>
+            <item>【重要】指定されたCOMIC-POTヘッダー、巻マーカー、ページマーカー以外は、セリフ本文と空行だけになっているか</item>
             <item>【重要】吹き出しごとに1行の空白行で区切られているか</item>
             <item>【重要】書き文字（擬音語・擬態語・オノマトペ）が含まれていないか</item>
             <item>抜け漏れや誤字がないか</item>
@@ -491,6 +501,8 @@ function generatePdfOnlyXML(rulesXML) {
             </balloon_identification>
             <format_rules>
                 <rule>画像データ内で改行されている位置で改行</rule>
+                <rule critical="true">添付画像1枚またはPDF 1ページを出力上の1ページとして扱い、ページごとに必ず &lt;&lt;XPage&gt;&gt; マーカーで区切る</rule>
+                <rule critical="true">見開き・左右ページ・連続する2ページを1つのページとして結合しない</rule>
                 <rule critical="true">【必須】吹き出し（フキダシ）ごとに必ず1行の空白行を入れて区切る</rule>
             </format_rules>
             <symbol_replacement_rules>${symbolRulesXml}
@@ -570,6 +582,8 @@ function generatePdfAndTxtXML(rulesXML) {
             </balloon_identification>
             <format_rules>
                 <rule>吹き出し内で改行されている位置で改行</rule>
+                <rule critical="true">PDFの1ページを出力上の1ページとして扱い、ページごとに必ず &lt;&lt;XPage&gt;&gt; マーカーで区切る</rule>
+                <rule critical="true">見開き・左右ページ・連続する2ページを1つのページとして結合しない</rule>
                 <rule critical="true">【必須】吹き出し（フキダシ）ごとに必ず1行の空白行を入れて区切る</rule>
             </format_rules>
             <symbol_replacement_rules>${symbolRulesXml}
@@ -688,6 +702,12 @@ function openExtractionResultPasteModal() {
     const modal = document.getElementById('extractionResultPasteModal');
     const textarea = document.getElementById('extractionResultPasteArea');
     if (!modal || !textarea) return;
+
+    const proofreadingPasteTab = document.getElementById('resultPasteFloatingTab');
+    if (proofreadingPasteTab) {
+        proofreadingPasteTab.classList.add('behind-modal');
+    }
+
     textarea.value = '';
     modal.style.display = 'flex';
     setTimeout(() => textarea.focus(), 50);
@@ -696,6 +716,9 @@ function openExtractionResultPasteModal() {
 function closeExtractionResultPasteModal() {
     const modal = document.getElementById('extractionResultPasteModal');
     if (modal) modal.style.display = 'none';
+
+    const proofreadingPasteTab = document.getElementById('resultPasteFloatingTab');
+    if (proofreadingPasteTab) proofreadingPasteTab.classList.remove('behind-modal');
 }
 
 async function saveExtractionResultText(openEditorAfterSave) {

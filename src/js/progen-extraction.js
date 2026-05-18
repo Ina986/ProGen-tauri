@@ -89,6 +89,111 @@ async function selectLabelFromPopup(label) {
     }
 }
 
+// ===== ヘッダー用レーベル選択ドロップダウン（トグルリスト式） =====
+let _labelDropdownAnchorBtn = null;
+
+function _positionLabelDropdown(anchorBtn) {
+    const dropdown = document.getElementById('labelDropdown');
+    if (!dropdown || !anchorBtn) return;
+    const rect = anchorBtn.getBoundingClientRect();
+
+    // 一度表示してサイズを取得
+    dropdown.style.visibility = 'hidden';
+    dropdown.style.display = 'block';
+    const dw = dropdown.offsetWidth;
+    const dh = dropdown.offsetHeight;
+    dropdown.style.visibility = '';
+
+    // 基本位置: ボタンの下、左寄せ
+    let top = rect.bottom + 6;
+    let left = rect.left;
+
+    // 画面右端をはみ出さない
+    const margin = 8;
+    if (left + dw > window.innerWidth - margin) {
+        left = Math.max(margin, window.innerWidth - dw - margin);
+    }
+    // 画面下端をはみ出す場合はボタンの上に出す
+    if (top + dh > window.innerHeight - margin) {
+        top = Math.max(margin, rect.top - dh - 6);
+    }
+
+    dropdown.style.top = top + 'px';
+    dropdown.style.left = left + 'px';
+}
+
+function toggleLabelDropdown(mode, anchorBtn) {
+    const dropdown = document.getElementById('labelDropdown');
+    if (!dropdown) return;
+    const isOpen = dropdown.style.display !== 'none' && dropdown.style.display !== '';
+    // 同じボタンを再クリックなら閉じる
+    if (isOpen && _labelDropdownAnchorBtn === anchorBtn) {
+        closeLabelDropdown();
+        return;
+    }
+    currentLabelSelectMode = mode;
+    _labelDropdownAnchorBtn = anchorBtn;
+
+    // 現在選択中のレーベルをハイライト
+    let currentLabel = '';
+    if (mode === 'extraction') {
+        currentLabel = document.getElementById('labelSelector').value;
+    } else if (mode === 'proofreading' || mode === 'comicpot-proofreading') {
+        currentLabel = document.getElementById('proofreadingLabelSelect').value;
+    } else if (mode === 'landing') {
+        currentLabel = document.getElementById('landingLabelSelect').value;
+    }
+    dropdown.querySelectorAll('.label-select-btn').forEach((btn) => {
+        btn.classList.toggle('selected', btn.getAttribute('data-label') === currentLabel);
+    });
+
+    _positionLabelDropdown(anchorBtn);
+    anchorBtn.classList.add('is-open');
+    anchorBtn.setAttribute('aria-expanded', 'true');
+}
+
+function closeLabelDropdown() {
+    const dropdown = document.getElementById('labelDropdown');
+    if (!dropdown) return;
+    dropdown.style.display = 'none';
+    if (_labelDropdownAnchorBtn) {
+        _labelDropdownAnchorBtn.classList.remove('is-open');
+        _labelDropdownAnchorBtn.setAttribute('aria-expanded', 'false');
+    }
+    _labelDropdownAnchorBtn = null;
+}
+
+async function selectLabelFromDropdown(label) {
+    // 既存の selectLabelFromPopup ロジックを再利用（モーダル非表示でも害なし）
+    closeLabelDropdown();
+    await selectLabelFromPopup(label);
+}
+
+// 外側クリック / ESC で閉じる
+if (typeof document !== 'undefined') {
+    document.addEventListener('mousedown', (e) => {
+        const dropdown = document.getElementById('labelDropdown');
+        if (!dropdown || dropdown.style.display === 'none' || dropdown.style.display === '') return;
+        if (dropdown.contains(e.target)) return;
+        if (_labelDropdownAnchorBtn && _labelDropdownAnchorBtn.contains(e.target)) return;
+        closeLabelDropdown();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const dropdown = document.getElementById('labelDropdown');
+            if (dropdown && dropdown.style.display !== 'none' && dropdown.style.display !== '') {
+                closeLabelDropdown();
+            }
+        }
+    });
+    // スクロール/リサイズで再配置
+    const _reposition = () => {
+        if (_labelDropdownAnchorBtn) _positionLabelDropdown(_labelDropdownAnchorBtn);
+    };
+    window.addEventListener('resize', _reposition);
+    window.addEventListener('scroll', _reposition, true);
+}
+
 // レーベル選択ボタンのテキストを更新
 function updateLabelSelectorButtonText(label) {
     const extractionText = document.getElementById('labelSelectorText');
@@ -226,16 +331,6 @@ function renderEditCardMode() {
     `;
     bottomControls.appendChild(auxDiv);
 
-    // 仕様書リンク
-    const linksDiv = document.createElement('div');
-    linksDiv.className = 'sidebar-text-links';
-    linksDiv.innerHTML = `
-        <a href="#" onclick="goToSpecSheetPage(); return false;">
-            <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="12" y2="18"/></svg></span> 仕様書
-        </a>
-    `;
-    bottomControls.appendChild(linksDiv);
-
     sidebar.appendChild(bottomControls);
 
     grid.appendChild(sidebar);
@@ -274,7 +369,7 @@ function updateHeaderSaveButtons() {
             headerSaveBtn.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> 上書き保存';
         } else {
             headerSaveBtn.style.display = 'inline-flex';
-            headerSaveBtn.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> 保存';
+            headerSaveBtn.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg></span> 表記ルールを保存';
         }
     }
     if (headerSaveAsBtn) {
@@ -686,11 +781,7 @@ function toggleNumberSubRules(checked) {
 // 記号ルールカード生成
 function renderSymbolRuleCard(rule, index, filterText) {
     const card = document.createElement('div');
-    card.className = 'edit-rule-card' + (rule.active ? '' : ' inactive');
-    card.onclick = (e) => {
-        if (e.target.type !== 'checkbox') openSymbolEditModal(index);
-    };
-
+    card.className = 'edit-rule-card symbol-rule-card' + (rule.active ? '' : ' inactive');
     // 半角スペースを見やすく表示
     const displayDst = rule.dst === ' ' ? '(半角スペース)' : rule.dst;
 
@@ -885,7 +976,6 @@ function goToSpecSheetPage() {
     document.getElementById('landingScreen').style.display = 'none';
     document.getElementById('mainWrapper').style.display = 'none';
     document.getElementById('proofreadingPage').style.display = 'none';
-    document.getElementById('adminPage').style.display = 'none';
     document.getElementById('resultViewerPage').style.display = 'none';
 
     // テーブル生成
@@ -1316,7 +1406,7 @@ function deleteSymbolFromEdit() {
 
 
 // ES Module exports
-export { openLabelSelectModal, closeLabelSelectModal, selectLabelFromPopup, updateLabelSelectorButtonText, changeLabel, filterRules, renderEditCardMode, filterRulesFromSidebar, updateHeaderSaveButtons, renderEditMainContent, renderNotationMainContent, renderNumberMainContent, selectEditCategory, renderCharacterRuleCard, toggleCharacterRuby, renderProofRuleCard, renderDifficultRuleCard, changeDifficultMode, changeNumberMode, toggleNumberSubRules, renderSymbolRuleCard, openAddModalWithCategory, updateModalLabels, openSymbolAddModal, switchFromSymbolModal, switchFromEditModal, renderTable, escapeHtml, escapeAttr, goToSpecSheetPage, goBackFromSpecSheet, goToHomeFromSpecSheet, renderSpecSheetTable, exportSpecSheetPDF, toggleRule, toggleAuxiliaryAll, addNewRule, openEditModal, closeModal, saveEdit, deleteFromEdit, updateMasterData, renderSymbolTable, toggleSymbolRule, addSymbolRule, openSymbolEditModal, closeSymbolModal, saveSymbolEdit, deleteSymbolFromEdit };
+export { openLabelSelectModal, closeLabelSelectModal, selectLabelFromPopup, toggleLabelDropdown, closeLabelDropdown, selectLabelFromDropdown, updateLabelSelectorButtonText, changeLabel, filterRules, renderEditCardMode, filterRulesFromSidebar, updateHeaderSaveButtons, renderEditMainContent, renderNotationMainContent, renderNumberMainContent, selectEditCategory, renderCharacterRuleCard, toggleCharacterRuby, renderProofRuleCard, renderDifficultRuleCard, changeDifficultMode, changeNumberMode, toggleNumberSubRules, renderSymbolRuleCard, openAddModalWithCategory, updateModalLabels, openSymbolAddModal, switchFromSymbolModal, switchFromEditModal, renderTable, escapeHtml, escapeAttr, goToSpecSheetPage, goBackFromSpecSheet, goToHomeFromSpecSheet, renderSpecSheetTable, exportSpecSheetPDF, toggleRule, toggleAuxiliaryAll, addNewRule, openEditModal, closeModal, saveEdit, deleteFromEdit, updateMasterData, renderSymbolTable, toggleSymbolRule, addSymbolRule, openSymbolEditModal, closeSymbolModal, saveSymbolEdit, deleteSymbolFromEdit };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { openLabelSelectModal, closeLabelSelectModal, selectLabelFromPopup, updateLabelSelectorButtonText, changeLabel, filterRules, renderEditCardMode, filterRulesFromSidebar, updateHeaderSaveButtons, renderEditMainContent, renderNotationMainContent, renderNumberMainContent, selectEditCategory, renderCharacterRuleCard, toggleCharacterRuby, renderProofRuleCard, renderDifficultRuleCard, changeDifficultMode, changeNumberMode, toggleNumberSubRules, renderSymbolRuleCard, openAddModalWithCategory, updateModalLabels, openSymbolAddModal, switchFromSymbolModal, switchFromEditModal, renderTable, escapeHtml, escapeAttr, goToSpecSheetPage, goBackFromSpecSheet, goToHomeFromSpecSheet, renderSpecSheetTable, exportSpecSheetPDF, toggleRule, toggleAuxiliaryAll, addNewRule, openEditModal, closeModal, saveEdit, deleteFromEdit, updateMasterData, renderSymbolTable, toggleSymbolRule, addSymbolRule, openSymbolEditModal, closeSymbolModal, saveSymbolEdit, deleteSymbolFromEdit });
+Object.assign(window, { openLabelSelectModal, closeLabelSelectModal, selectLabelFromPopup, toggleLabelDropdown, closeLabelDropdown, selectLabelFromDropdown, updateLabelSelectorButtonText, changeLabel, filterRules, renderEditCardMode, filterRulesFromSidebar, updateHeaderSaveButtons, renderEditMainContent, renderNotationMainContent, renderNumberMainContent, selectEditCategory, renderCharacterRuleCard, toggleCharacterRuby, renderProofRuleCard, renderDifficultRuleCard, changeDifficultMode, changeNumberMode, toggleNumberSubRules, renderSymbolRuleCard, openAddModalWithCategory, updateModalLabels, openSymbolAddModal, switchFromSymbolModal, switchFromEditModal, renderTable, escapeHtml, escapeAttr, goToSpecSheetPage, goBackFromSpecSheet, goToHomeFromSpecSheet, renderSpecSheetTable, exportSpecSheetPDF, toggleRule, toggleAuxiliaryAll, addNewRule, openEditModal, closeModal, saveEdit, deleteFromEdit, updateMasterData, renderSymbolTable, toggleSymbolRule, addSymbolRule, openSymbolEditModal, closeSymbolModal, saveSymbolEdit, deleteSymbolFromEdit });

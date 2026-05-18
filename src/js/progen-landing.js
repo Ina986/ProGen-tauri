@@ -3,6 +3,107 @@
    ========================================= */
 
 import { state } from './progen-state.js';
+
+// ─── ジャンル → レーベル定義 (Comic-Bridge と同じ) ───
+const GENRE_LABELS = {
+    '一般女性': ['Ropopo!', 'コイパレ', 'キスカラ', 'カルコミ', 'ウーコミ!', 'シェノン'],
+    'TL': ['TLオトメチカ', 'LOVE FLICK', '乙女チック', 'ウーコミkiss!', 'シェノン+', '@夜噺'],
+    'BL': ['NuPu', 'spicomi', 'MooiComics', 'BLオトメチカ', 'BOYS FAN'],
+    '一般男性': ['DEDEDE', 'GG-COMICS', 'コミックREBEL'],
+    'メンズ': ['カゲキヤコミック', 'もえスタビースト', '@夜噺＋'],
+    'タテコミ': ['GIGATOON'],
+};
+
+// ランディング画面のジャンルセレクトを初期化
+function initLandingLabelPicker() {
+    const genreSelect = document.getElementById('landingGenreSelect');
+    if (!genreSelect) return;
+    // 既に初期化済みなら何もしない
+    if (genreSelect.options.length > 1) return;
+
+    Object.keys(GENRE_LABELS).forEach((g) => {
+        const opt = document.createElement('option');
+        opt.value = g;
+        opt.textContent = g;
+        genreSelect.appendChild(opt);
+    });
+}
+
+// ジャンル選択時のハンドラ
+function onLandingGenreChange(genre) {
+    const labelSelect = document.getElementById('landingLabelPickerSelect');
+    if (!labelSelect) return;
+
+    // レーベル一覧をクリア
+    labelSelect.innerHTML = '<option value="">選択...</option>';
+
+    if (!genre || !GENRE_LABELS[genre]) {
+        labelSelect.disabled = true;
+        updateLandingProceedBtn();
+        return;
+    }
+
+    GENRE_LABELS[genre].forEach((l) => {
+        const opt = document.createElement('option');
+        opt.value = l;
+        opt.textContent = l;
+        labelSelect.appendChild(opt);
+    });
+    labelSelect.disabled = false;
+    updateLandingProceedBtn();
+}
+
+// レーベル選択時のハンドラ
+function onLandingLabelChange(label) {
+    // 隠しフィールドにも反映
+    const hidden = document.getElementById('landingLabelSelect');
+    if (hidden) hidden.value = label || '';
+    updateLandingProceedBtn();
+}
+
+// 「次へ」ボタンの有効/無効を更新
+function updateLandingProceedBtn() {
+    const btn = document.getElementById('landingProceedBtn');
+    const labelSelect = document.getElementById('landingLabelPickerSelect');
+    if (!btn || !labelSelect) return;
+    btn.disabled = !labelSelect.value;
+}
+
+// 「次へ」を押してメイン画面（抽出モード）に遷移
+async function proceedFromLandingLabel() {
+    const labelSelect = document.getElementById('landingLabelPickerSelect');
+    if (!labelSelect || !labelSelect.value) return;
+
+    const label = labelSelect.value;
+
+    // メイン画面のラベルセレクタに反映
+    const mainSelector = document.getElementById('labelSelector');
+    if (mainSelector) mainSelector.value = label;
+    const labelText = document.getElementById('labelSelectorText');
+    if (labelText) {
+        labelText.textContent = label;
+        labelText.classList.remove('unselected');
+    }
+
+    // 添付ファイルトグル・Geminiボタンのロックを解除
+    if (typeof enableDataTypeToggle === 'function') enableDataTypeToggle();
+    const geminiBtn = document.getElementById('extractionGeminiBtn');
+    if (geminiBtn) geminiBtn.removeAttribute('disabled');
+
+    // ルール読み込み
+    if (typeof loadMasterRule === 'function') {
+        await loadMasterRule(label);
+    }
+
+    // 編集モードで初期表示
+    state.currentViewMode = 'edit';
+    state.currentEditCategory = 'symbol';
+    if (typeof renderTable === 'function') renderTable();
+    if (typeof showEditMode === 'function') showEditMode();
+    if (typeof generateXML === 'function') generateXML();
+
+    hideLandingScreen();
+}
 // レーベルボタンをクリックして直接開始
 async function startWithLabelDirect(label) {
     // メインのセレクタにも反映
@@ -79,7 +180,7 @@ function renderLandingProofreadingFileList() {
         const sizeStr = formatFileSize(file.size);
         html += `
             <div class="landing-file-item">
-                <span class="landing-file-item-icon">📄</span>
+                <span class="landing-file-item-icon"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></span></span>
                 <span class="landing-file-item-name">${escapeHtml(file.name)}</span>
                 <span class="landing-file-item-size">${sizeStr}</span>
             </div>
@@ -160,15 +261,29 @@ function hideLandingScreen() {
     // データ種類に応じてセリフTXT読込ボタンの表示を更新
     const dataType = document.getElementById('dataTypeSelector').value;
     const txtUploadGroup = document.getElementById('txtUploadGroup');
+    const txtUploadBtn = document.getElementById('txtUploadBtn');
     if (txtUploadGroup) {
-        txtUploadGroup.style.display = (dataType === 'pdf_only') ? 'none' : '';
+        const needsTxt = (dataType === 'pdf_and_txt' || dataType === 'txt_only');
+        txtUploadGroup.style.display = 'flex';
+        if (txtUploadBtn) txtUploadBtn.disabled = !needsTxt;
     }
 }
 
 // ホーム画面（ランディング画面）に戻る（アニメーション付き）
-function goToHome() {
+async function goToHome() {
     const landing = document.getElementById('landingScreen');
     const main = document.getElementById('mainWrapper');
+
+    const confirmed = (typeof window.confirmHomeReset === 'function')
+        ? await window.confirmHomeReset()
+        : window.confirm('読み込みがリセットされます。よろしいですか？');
+    if (!confirmed) {
+        return;
+    }
+
+    if (typeof window.resetProofreadingResultOnHome === 'function') {
+        window.resetProofreadingResultOnHome();
+    }
 
     // ランディング画面のレーベル選択をリセット
     resetLandingLabelSelector();
@@ -297,8 +412,12 @@ async function startProofreading() {
 
 // 初期化（ランディング画面を表示した状態で開始）
 function init() {
-    // ランディング画面が表示されている状態で開始
-    // 何もしない（レーベル選択またはJSON読み込み後に初期化される）
+    state.outputFormatSortMode = 'bottomToTop';
+    // ランディング画面のレーベルピッカーを初期化
+    initLandingLabelPicker();
+    if (typeof updatePromptGenerationButtonState === 'function') {
+        updatePromptGenerationButtonState();
+    }
 }
 
 // 表示モード切り替え（編集モード ⇔ 一覧表示）
@@ -599,7 +718,7 @@ function renderColumn3(grid) {
     // 数字ルールサマリー
     html += `
         <div class="sub-category-header" style="background:var(--copper); padding:6px 10px; font-size:0.75em; font-weight:bold; color:white;">
-            🔢 数字
+            <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 8h8"/><path d="M8 12h8"/><path d="M8 16h5"/></svg></span> 数字
         </div>
         <div class="number-summary" onclick="state.currentEditCategory='number'; state.currentViewMode='edit'; showEditMode();">
             <div><span class="number-summary-label">基本:</span>${numberBaseOptions[state.numberRuleBase] || numberBaseOptions[0]}</div>
@@ -612,7 +731,7 @@ function renderColumn3(grid) {
     if (difficultRules.length > 0) {
         html += `
             <div class="sub-category-header" style="background:var(--plum); padding:6px 10px; font-size:0.75em; font-weight:bold; color:white;">
-                🔤 難読漢字（すべてひらく）
+                <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h10"/><path d="M4 17h16"/><path d="M15 12h5"/></svg></span> 難読漢字（すべてひらく）
             </div>
             <table class="category-table excel-style" data-category="difficult">
                 <tbody></tbody>
@@ -674,7 +793,7 @@ function renderOptionsCard(grid) {
     box.className = 'category-box';
     box.innerHTML = `
         <div class="category-header options">
-            <span>⚙️ その他 表記ルール</span>
+            <span><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1.82V22a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 20.4a1.65 1.65 0 0 0-1.82-.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1.82-.33H2a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 3.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06A2 2 0 1 1 6.04 4.3l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6A1.65 1.65 0 0 0 10.33 2H14a1.65 1.65 0 0 0 .33 1.82 1.65 1.65 0 0 0 1.82.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.31.41.5.91.5 1.45s-.19 1.04-.5 1.45z"/></svg></span> その他 表記ルール</span>
         </div>
         <div class="category-options">
             <div class="option-row">
@@ -811,8 +930,102 @@ function switchToFormattingModeFromProofreading() {
     }, 250);
 }
 
+// ─── プロンプト生成バー (4ボタン) のハンドラ ─────────────────────
+// 抽出プロンプト生成
+function generateExtractionPrompt() {
+    switchToExtractionMode();
+    if (typeof copyAndOpenGemini === 'function') copyAndOpenGemini();
+}
+
+// 整形プロンプト生成
+function generateFormattingPrompt() {
+    if (typeof hasLoadedManuscriptTxt === 'function' && !hasLoadedManuscriptTxt()) {
+        showToast('TXTデータを読み込んでから実行してください', 'warning');
+        return;
+    }
+    switchToFormattingMode();
+    if (typeof copyAndOpenGemini === 'function') copyAndOpenGemini();
+}
+
+function getCurrentPromptSourceText() {
+    const parts = [];
+
+    if (state.manuscriptTxtFiles && state.manuscriptTxtFiles.length > 0) {
+        parts.push(state.manuscriptTxtFiles.map(file => file.content).join('\n\n'));
+    }
+
+    if (state.proofreadingContent) {
+        parts.push(state.proofreadingContent);
+    }
+
+    if (state.landingProofreadingContent) {
+        parts.push(state.landingProofreadingContent);
+    }
+
+    const cpTextArea = document.getElementById('cpEditTextArea');
+    if (cpTextArea && cpTextArea.value) {
+        parts.push(cpTextArea.value);
+    }
+
+    return parts.filter(Boolean).join('\n\n').trim();
+}
+
+async function copyProofreadingPromptAndOpenGemini(type) {
+    if (typeof hasLoadedManuscriptTxt === 'function' && !hasLoadedManuscriptTxt()) {
+        showToast('TXTデータを読み込んでから実行してください', 'warning');
+        return;
+    }
+    const text = getCurrentPromptSourceText();
+    if (!text) {
+        showToast('校正用テキストを読み込んでから実行してください', 'warning');
+        return;
+    }
+
+    const isSimple = type === 'simple';
+    const generator = isSimple ? window.generateSimpleCheckPromptWithText : window.generateVariationCheckPromptWithText;
+    if (typeof generator !== 'function') {
+        showToast('プロンプト生成機能の読み込みに失敗しました', 'error');
+        return;
+    }
+
+    const prompt = generator(text);
+    try {
+        await navigator.clipboard.writeText(prompt);
+    } catch (error) {
+        console.error('clipboard write failed:', error);
+        showToast('クリップボードへのコピーに失敗しました', 'error');
+        return;
+    }
+
+    window.open('https://gemini.google.com/app', '_blank');
+    if (typeof window.showResultPasteFloatingTab === 'function') {
+        window.showResultPasteFloatingTab(isSimple ? 'simple' : 'variation');
+    }
+}
+
+// 正誤チェックプロンプト生成 → コピーしてGeminiを開く
+function generateSimpleCheckPrompt2() {
+    copyProofreadingPromptAndOpenGemini('simple');
+}
+
+// 提案チェックプロンプト生成 → コピーしてGeminiを開く
+function generateVariationCheckPrompt2() {
+    copyProofreadingPromptAndOpenGemini('variation');
+}
+
 // ES Module exports
-export { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, switchToFormattingModeFromProofreading };
+export { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, switchToFormattingModeFromProofreading, generateExtractionPrompt, generateFormattingPrompt, generateSimpleCheckPrompt2, generateVariationCheckPrompt2, initLandingLabelPicker, onLandingGenreChange, onLandingLabelChange, proceedFromLandingLabel };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, switchToFormattingModeFromProofreading });
+Object.assign(window, { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, switchToFormattingModeFromProofreading, generateExtractionPrompt, generateFormattingPrompt, generateSimpleCheckPrompt2, generateVariationCheckPrompt2, initLandingLabelPicker, onLandingGenreChange, onLandingLabelChange, proceedFromLandingLabel });
+
+// DOMContentLoaded 時にレーベルピッカーを初期化
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            initLandingLabelPicker();
+        });
+    } else {
+        initLandingLabelPicker();
+    }
+}

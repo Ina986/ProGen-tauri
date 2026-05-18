@@ -358,11 +358,15 @@ const XML_FOOTER = `        </proofreading_rules>
             <req>ヘッダーに「Plaintext」と表示されるコードブロックに出力する。</req>
             <req>ページ区切りは「----------」（ハイフン10個）とする。</req>
             <req critical="true">【必須】吹き出し（フキダシ）ごとに1行の空白行を入れて区切る。これは絶対に守ること。</req>
+            <req critical="true">【必須】コードブロック内にはページ区切り、セリフ本文、空行のみを含める。</req>
+            <req critical="true">【禁止】コードブロック内にXML/HTML/Markdown風のタグ、属性、説明用ラベル、JSON、箇条書き、表、コメント、メタ情報を入れない。</req>
+            <req critical="true">【禁止例】&lt;page&gt;、&lt;line&gt;、&lt;text&gt;、&lt;speech&gt;、&lt;balloon&gt;、&lt;dialogue&gt;、&lt;chunk&gt;、&lt;metadata&gt; のようなタグ形式で出力しない。</req>
         </format_requirements>
         <citation_marker_removal>
             <instruction>出力テキストから以下のシステムタグを完全に削除すること：</instruction>
             <target>[cite:...]、[cite_end]、[source:...]など、角括弧で囲まれた参照タグ</target>
             <target>脚注番号や参照元のファイル番号</target>
+            <target>XML/HTML風タグ、属性、説明用ラベル、解析メモ、ページ説明、吹き出し番号、チャンク番号</target>
             <goal>人間が手書きで清書したかのような、システム的な注釈記号が一切ない純粋なテキストに仕上げる</goal>
         </citation_marker_removal>
         <output_example description="吹き出しごとに空行で区切られた正しい出力例">

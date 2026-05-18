@@ -16,7 +16,7 @@ let cpSelectedChunkIndex = null;
 let cpFileName = '無題';
 let cpFilePath = ''; // 保存先ファイルパス（上書き用）
 let cpSavedText = ''; // 最後に保存/ロードした時点のテキスト（dirty判定用）
-let cpIsEditing = false;
+let cpIsEditing = true;
 let cpComicPotHeader = '';
 let cpDraggedChunkIndex = null;
 let cpDragOverIndex = null;
@@ -29,6 +29,9 @@ let cpRubySelectionStart = 0;
 let cpRubySelectionEnd = 0;
 let cpRubySelectedText = '';
 let cpRubyMode = localStorage.getItem('cpRubyMode') || 'comicpot'; // 'comicpot' | 'standard'
+// 直近に .cp-page-text-block 上で確定した選択範囲（ボタン押下で focus が外れる前に保持しておく）
+// { absStart, absEnd, text } | null
+let _cpLastBlockSelection = null;
 
 // ===== COMIC-POT スプリットビュー =====
 let cpResultPanelVisible = false;
@@ -47,8 +50,9 @@ let cpResultPanelEl, cpResultPanelBody, cpEditorColumn, cpResizeHandle;
 let cpBtnTogglePanel, cpPanelSep, cpPanelTabVariation, cpPanelTabSimple, cpPanelCategoryFilter;
 
 function cpEnsureCalibrationButton() {
-    const saveAsButton = document.getElementById('cpBtnSaveAs');
-    if (!saveAsButton || document.getElementById('cpBtnCalibrationData')) return;
+    // テキスト読み込みボタンの直後に挿入。万一無ければ別名保存の後にフォールバック。
+    const anchor = document.getElementById('cpBtnLoadText') || document.getElementById('cpBtnSaveAs');
+    if (!anchor || document.getElementById('cpBtnCalibrationData')) return;
 
     const button = document.createElement('button');
     button.id = 'cpBtnCalibrationData';
@@ -56,7 +60,7 @@ function cpEnsureCalibrationButton() {
     button.title = '校正データを開く';
     button.innerHTML = '<span class="cp-toolbar-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path><rect x="9" y="3" width="6" height="4" rx="1"></rect><path d="M9 14l2 2 4-4"></path></svg></span>校正データ';
     button.addEventListener('click', cpLoadCalibrationData);
-    saveAsButton.insertAdjacentElement('afterend', button);
+    anchor.insertAdjacentElement('afterend', button);
 }
 
 function cpInitDomRefs() {
@@ -97,29 +101,52 @@ function goToComicPotEditor(source, options) {
 
     const editorPage = document.getElementById('comicPotEditorPage');
 
-    // 全ページを非表示
-    document.getElementById('landingScreen').style.display = 'none';
-    document.getElementById('mainWrapper').style.display = 'none';
-    document.getElementById('proofreadingPage').style.display = 'none';
-    document.getElementById('adminPage').style.display = 'none';
-    document.getElementById('resultViewerPage').style.display = 'none';
-    document.getElementById('specSheetPage').style.display = 'none';
+    // 遷移元ページを検出（display !== 'none' のもの）
+    const candidates = ['landingScreen', 'mainWrapper', 'proofreadingPage', 'resultViewerPage', 'specSheetPage'];
+    const sourcePages = candidates
+        .map(id => document.getElementById(id))
+        .filter(el => el && el.style.display !== 'none' && getComputedStyle(el).display !== 'none');
 
-    editorPage.style.display = 'flex';
-    editorPage.classList.add('page-transition-zoom-in');
-    setTimeout(() => {
-        editorPage.classList.remove('page-transition-zoom-in');
-    }, 350);
+    const showEditor = () => {
+        editorPage.style.display = 'flex';
+        editorPage.classList.add('cp-slide-in-right');
+        setTimeout(() => editorPage.classList.remove('cp-slide-in-right'), 320);
+    };
+
+    if (sourcePages.length > 0) {
+        // 遷移元を左へスライドアウト → 完了後にエディタを右からスライドイン
+        sourcePages.forEach(p => p.classList.add('cp-slide-out-left'));
+        setTimeout(() => {
+            sourcePages.forEach(p => {
+                p.style.display = 'none';
+                p.classList.remove('cp-slide-out-left');
+            });
+            // 他の候補ページも一応非表示にしておく
+            candidates.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+            showEditor();
+        }, 220);
+    } else {
+        // 遷移元が見つからない（初回起動等）→ そのままエディタ表示
+        candidates.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+        showEditor();
+    }
 
     // イベントリスナーを初期化（初回のみ）
     cpSetupEventListeners();
+    const loadedPreloadedText = cpApplyPreloadedSerifText();
     cpRender();
 
     // セリフ読込ボタン: 読み込み済みテキストがあれば表示
     const cpBtnLoadSerif = document.getElementById('cpBtnLoadSerif');
-    if (cpSourcePage === 'proofreading' && state.proofreadingFiles.length > 0) {
+    if (cpSourcePage === 'proofreading' && cpGetValidSerifFiles(state.proofreadingFiles).length > 0) {
         cpBtnLoadSerif.style.display = '';
-    } else if ((cpSourcePage === 'extraction' || cpSourcePage === 'landing') && state.manuscriptTxtFiles.length > 0) {
+    } else if (cpSourcePage === 'extraction' && cpGetValidSerifFiles(state.manuscriptTxtFiles).length > 0) {
         cpBtnLoadSerif.style.display = '';
     } else {
         cpBtnLoadSerif.style.display = 'none';
@@ -138,13 +165,14 @@ function goToComicPotEditor(source, options) {
     }
 
     // 校正プロンプトからの遷移でテキストが1つだけなら自動読み込み
-    if (cpSourcePage === 'proofreading' && state.proofreadingFiles.length === 1) {
-        cpApplySerifFile(state.proofreadingFiles[0]);
+    const validProofreadingFiles = cpGetValidSerifFiles(state.proofreadingFiles);
+    if (!loadedPreloadedText && cpSourcePage === 'proofreading' && validProofreadingFiles.length === 1) {
+        cpApplySerifFile(validProofreadingFiles[0]);
     }
 }
 
 function cpLoadSerifText() {
-    const files = cpSourcePage === 'proofreading' ? state.proofreadingFiles : state.manuscriptTxtFiles;
+    const files = cpGetSerifFilesForCurrentSource();
     if (!files || files.length === 0) {
         cpShowNotification('読み込み済みのセリフテキストがありません。', 'error');
         return;
@@ -167,14 +195,18 @@ function cpApplySerifFile(file) {
     cpComicPotHeader = cpExtractComicPotHeader(cpText);
     cpChunks = cpParseTextToChunks(cpText);
     cpSelectedChunkIndex = null;
-    cpIsEditing = false;
+    cpIsEditing = true;
     cpRender();
     cpShowNotification('「' + file.name + '」を読み込みました。', 'success');
 }
 
 function cpLoadAllSerifText() {
-    const files = cpSourcePage === 'proofreading' ? state.proofreadingFiles : state.manuscriptTxtFiles;
+    const files = cpGetSerifFilesForCurrentSource();
     cpCloseSerifSelectModal();
+    if (!files || files.length === 0) {
+        cpShowNotification('読み込み済みのセリフテキストがありません。', 'error');
+        return;
+    }
     if (cpText.trim() !== '') {
         if (!confirm('現在のテキストを上書きしますか？')) return;
     }
@@ -186,7 +218,7 @@ function cpLoadAllSerifText() {
     cpComicPotHeader = cpExtractComicPotHeader(cpText);
     cpChunks = cpParseTextToChunks(cpText);
     cpSelectedChunkIndex = null;
-    cpIsEditing = false;
+    cpIsEditing = true;
     cpRender();
     cpShowNotification(files.length + '件のセリフテキストをすべて読み込みました。', 'success');
 }
@@ -210,6 +242,61 @@ function cpOpenSerifSelectModal(files) {
 
 function cpCloseSerifSelectModal() {
     document.getElementById('cpSerifSelectModal').style.display = 'none';
+}
+
+function cpGetValidSerifFiles(files) {
+    if (!Array.isArray(files)) return [];
+    return files.filter(file => file && cpNormalizeTextContent(file.content).trim() !== '');
+}
+
+function cpGetSerifFilesForCurrentSource() {
+    if (cpSourcePage === 'proofreading') {
+        return cpGetValidSerifFiles(state.proofreadingFiles);
+    }
+    if (cpSourcePage === 'extraction') {
+        return cpGetValidSerifFiles(state.manuscriptTxtFiles);
+    }
+    return [];
+}
+
+function cpNormalizeTextContent(content) {
+    let normalized = String(content || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    if (normalized.charCodeAt(0) === 0xFEFF) normalized = normalized.substring(1);
+    return normalized;
+}
+
+function cpSetEditorTextFromSerifFile(file, options = {}) {
+    const content = cpNormalizeTextContent(file && file.content);
+    cpText = content;
+    cpSavedText = cpText;
+    cpFilePath = file && file.path ? file.path : '';
+    cpFileName = file && file.name ? file.name : '無題';
+    cpComicPotHeader = cpExtractComicPotHeader(cpText);
+    cpChunks = cpParseTextToChunks(cpText);
+    cpSelectedChunkIndex = null;
+    cpIsEditing = true;
+    if (options.flash && typeof cpFlashEditorNotice === 'function') {
+        cpFlashEditorNotice(options.flash);
+    }
+}
+
+function cpBuildCombinedSerifFile(files) {
+    const safeFiles = Array.isArray(files) ? files : [];
+    return {
+        name: safeFiles.length > 1 ? safeFiles[0].name + ' 他 ' + (safeFiles.length - 1) + '件' : (safeFiles[0] && safeFiles[0].name) || '無題',
+        content: safeFiles.map(f => cpNormalizeTextContent(f.content)).join('\n\n'),
+        size: safeFiles.reduce((sum, f) => sum + (f.size || (f.content ? String(f.content).length : 0)), 0)
+    };
+}
+
+function cpApplyPreloadedSerifText() {
+    if (cpText && cpText.trim() !== '') return false;
+    const files = cpGetSerifFilesForCurrentSource();
+    if (!files || files.length === 0) return false;
+
+    const file = files.length === 1 ? files[0] : cpBuildCombinedSerifFile(files);
+    cpSetEditorTextFromSerifFile(file, { flash: '読み込み済みテキストを引き継ぎました' });
+    return true;
 }
 
 /**
@@ -237,6 +324,7 @@ async function cpLoadFromHandoff(data) {
     if (statusEl) statusEl.textContent = state.manuscriptTxtFiles.length + 'ファイル (' + formatFileSize(totalSize) + ')';
     const manageBtn = document.getElementById('txtManageBtn');
     if (manageBtn) manageBtn.style.display = 'inline-block';
+    if (typeof updateTxtUploadStatus === 'function') updateTxtUploadStatus();
     const geminiBtn = document.getElementById('extractionGeminiBtn');
     if (geminiBtn) geminiBtn.removeAttribute('disabled');
 
@@ -265,9 +353,83 @@ async function cpLoadFromHandoff(data) {
     cpComicPotHeader = cpExtractComicPotHeader(cpText);
     cpChunks = cpParseTextToChunks(cpText);
     cpSelectedChunkIndex = null;
-    cpIsEditing = false;
+    cpIsEditing = true;
     goToComicPotEditor('extraction');
     cpShowNotification('COMIC-POTから「' + data.fileName + '」を受け取りました。', 'success');
+}
+
+// エディタ状態をリセット（テキスト・ファイル名・チャンク・画像ビューア）
+function _cpResetEditorState() {
+    cpText = '';
+    cpSavedText = '';
+    cpChunks = [];
+    cpFileName = '無題';
+    cpFilePath = '';
+    cpComicPotHeader = '';
+    if (cpEditTextArea) cpEditTextArea.value = '';
+    _cpLastReportedPage = null;
+    _cpLastBlockSelection = null;
+    // 画像ビューアもリセット
+    if (typeof window.cpViewerReset === 'function') window.cpViewerReset();
+    // UI 反映（cpRender が文字数・ファイル名・パネル等を全て更新）
+    if (typeof cpRender === 'function') cpRender();
+}
+
+// 画像が読み込まれているか（cpViewerCanvas が表示中＝画像 or PDF が入っている）
+function _cpHasViewerImage() {
+    const canvas = document.getElementById('cpViewerCanvas');
+    if (!canvas) return false;
+    // 初期 HTML は display:none、画像ロード後は display:'' に切り替わる
+    return canvas.style.display !== 'none';
+}
+
+// ホームボタンの本体: モーダル確認後に呼ばれる実遷移処理
+function _cpExecuteGoHome() {
+    cpSourcePage = 'landing';
+
+    // スプリットビューをリセット
+    cpHideResultPanel();
+    cpPanelCurrentTab = 'simple';
+    cpPanelWidthPercent = 50;
+
+    const pendingTitle = state.pendingWorkTitle;
+    if (pendingTitle) {
+        state.pendingWorkTitle = '';
+        _autoSelectWorkJson(pendingTitle);
+    }
+
+    const editorPage = document.getElementById('comicPotEditorPage');
+    const landingScreen = document.getElementById('landingScreen');
+
+    // エディタを奥へフェードアウト → 完了後にランディングを手前にフェードイン
+    editorPage.classList.add('cp-fade-out-back');
+    setTimeout(() => {
+        editorPage.style.display = 'none';
+        editorPage.classList.remove('cp-fade-out-back');
+        if (landingScreen) {
+            landingScreen.style.display = 'flex';
+            landingScreen.classList.add('cp-fade-in-front');
+            setTimeout(() => landingScreen.classList.remove('cp-fade-in-front'), 320);
+        }
+    }, 340);
+}
+
+// ホームボタン: 遷移元に関わらずランディング画面（ホーム）へ戻る。
+// 編集中テキストや読み込み済み画像がある場合は警告ダイアログを出し、確定でリセット→遷移。
+async function cpGoHomeFromEditor() {
+    const hasText = !!(cpText && cpText.length > 0);
+    const hasImage = _cpHasViewerImage();
+    if (hasText || hasImage) {
+        const confirmed = (typeof window.confirmHomeReset === 'function')
+            ? await window.confirmHomeReset()
+            : window.confirm('読み込みがリセットされます。よろしいですか？');
+        if (!confirmed) return;
+    }
+    if (typeof window.resetProofreadingResultOnHome === 'function') {
+        window.resetProofreadingResultOnHome();
+    }
+    _cpResetEditorState();
+    _cpExecuteGoHome();
 }
 
 function goBackFromComicPotEditor() {
@@ -284,38 +446,33 @@ function goBackFromComicPotEditor() {
     }
 
     const editorPage = document.getElementById('comicPotEditorPage');
-    if (cpSourcePage === 'proofreading') {
-        const proofreadingPage = document.getElementById('proofreadingPage');
-        editorPage.classList.add('page-transition-out-down');
-        setTimeout(() => {
-            editorPage.style.display = 'none';
-            editorPage.classList.remove('page-transition-out-down');
-            proofreadingPage.style.display = 'flex';
-            proofreadingPage.classList.add('page-transition-up');
-            setTimeout(() => { proofreadingPage.classList.remove('page-transition-up'); }, 350);
-        }, 200);
-    } else if (cpSourcePage === 'landing') {
-        const landingScreen = document.getElementById('landingScreen');
-        editorPage.classList.add('page-transition-out-down');
-        setTimeout(() => {
-            editorPage.style.display = 'none';
-            editorPage.classList.remove('page-transition-out-down');
-            landingScreen.style.display = 'flex';
-            landingScreen.classList.add('page-transition-up');
-            setTimeout(() => { landingScreen.classList.remove('page-transition-up'); }, 350);
-        }, 200);
-    } else {
-        const mainWrapper = document.getElementById('mainWrapper');
-        editorPage.classList.add('page-transition-out-down');
-        setTimeout(() => {
-            editorPage.style.display = 'none';
-            editorPage.classList.remove('page-transition-out-down');
-            mainWrapper.style.display = 'flex';
-            mainWrapper.classList.add('page-transition-up');
-            setTimeout(() => { mainWrapper.classList.remove('page-transition-up'); }, 350);
-            updateHeaderSaveButtons();
-        }, 200);
+
+    // 戻り先と display 値（mainWrapper のみ 'flex'、その他は 'flex'）を判定
+    let targetId = 'mainWrapper';
+    if (cpSourcePage === 'proofreading') targetId = 'proofreadingPage';
+    else if (cpSourcePage === 'resultViewer') targetId = 'resultViewerPage';
+    else if (cpSourcePage === 'landing') targetId = 'landingScreen';
+    let targetEl = document.getElementById(targetId);
+    if (!targetEl && targetId === 'proofreadingPage') {
+        targetId = 'mainWrapper';
+        targetEl = document.getElementById(targetId);
     }
+    const targetDisplay = targetId === 'resultViewerPage' ? 'block' : 'flex';
+
+    // エディタを右へスライドアウト → 完了後に戻り先を左からスライドイン
+    editorPage.classList.add('cp-slide-out-right');
+    setTimeout(() => {
+        editorPage.style.display = 'none';
+        editorPage.classList.remove('cp-slide-out-right');
+        if (targetEl) {
+            targetEl.style.display = targetDisplay;
+            targetEl.classList.add('cp-slide-in-left');
+            setTimeout(() => targetEl.classList.remove('cp-slide-in-left'), 320);
+        }
+        if (targetId === 'mainWrapper' && typeof updateHeaderSaveButtons === 'function') {
+            updateHeaderSaveButtons();
+        }
+    }, 220);
 }
 
 // ===== 保存確認モーダル =====
@@ -377,7 +534,7 @@ async function cpSaveConfirmAction(action) {
             cpSavedText = cpText;
             const parts = dialogResult.filePath.replace(/\\/g, '/').split('/');
             cpFileName = parts[parts.length - 1];
-            cpFileNameDisplay.textContent = cpFileName;
+            cpFileNameDisplay.textContent = 'テキストエディタ';
             cpShowNotify('保存しました: ' + cpFileName, 'var(--sage)');
         } else {
             cpShowNotify('保存に失敗しました', '#ef4444');
@@ -425,17 +582,46 @@ async function _cpExecuteProofreadingTransition() {
         await _autoSelectWorkJson(title);
     }
 
-    // 校正プロンプトページへ遷移
+    // 校正専用ページは現在UIから撤去済み。存在しない場合はメイン画面のプロンプト生成バーへ戻す。
     const editorPage = document.getElementById('comicPotEditorPage');
     const proofreadingPage = document.getElementById('proofreadingPage');
-    editorPage.classList.add('page-transition-out-down');
+    const mainWrapper = document.getElementById('mainWrapper');
+    if (!editorPage) {
+        return;
+    }
+    if (!proofreadingPage) {
+        editorPage.classList.add('cp-slide-out-left');
+        setTimeout(() => {
+            editorPage.style.display = 'none';
+            editorPage.classList.remove('cp-slide-out-left');
+
+            ['landingScreen', 'resultViewerPage', 'specSheetPage'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
+            if (mainWrapper) {
+                mainWrapper.style.display = 'flex';
+                mainWrapper.classList.add('cp-slide-in-right');
+                setTimeout(() => mainWrapper.classList.remove('cp-slide-in-right'), 320);
+            }
+
+            if (typeof updateHeaderSaveButtons === 'function') {
+                updateHeaderSaveButtons();
+            }
+        }, 220);
+
+        return;
+    }
+
+    editorPage.classList.add('cp-slide-out-left');
     setTimeout(() => {
         editorPage.style.display = 'none';
-        editorPage.classList.remove('page-transition-out-down');
+        editorPage.classList.remove('cp-slide-out-left');
         proofreadingPage.style.display = 'flex';
-        proofreadingPage.classList.add('page-transition-up');
-        setTimeout(() => { proofreadingPage.classList.remove('page-transition-up'); }, 350);
-    }, 200);
+        proofreadingPage.classList.add('cp-slide-in-right');
+        setTimeout(() => { proofreadingPage.classList.remove('cp-slide-in-right'); }, 320);
+    }, 220);
 
     // 校正ページの状態を更新（_autoSelectWorkJson完了後にルール反映済み）
     renderProofreadingFileList();
@@ -464,19 +650,6 @@ async function cpGoToProofreading() {
     if (cpText && cpText.trim() !== '' && cpText !== cpSavedText) {
         const result = await cpShowSaveConfirm();
         if (result === 'cancel') return;
-    }
-
-    // テキストエディタでJSONを開いている場合はレーベル選択不要（遷移先で自動選択される）
-    // それ以外でルールもレーベルも未設定の場合のみレーベル選択モーダルを表示
-    const hasPendingJson = !!state.pendingWorkTitle;
-    const proofLabel = document.getElementById('proofreadingLabelSelect');
-    const hasRules = state.currentProofRules && state.currentProofRules.length > 0;
-    const labelValue = proofLabel ? proofLabel.value : '';
-    const hasLabel = labelValue && labelValue !== 'default';
-    if (!hasPendingJson && !hasRules && !hasLabel) {
-        state._cpPendingProofreadingTransition = _cpExecuteProofreadingTransition;
-        openLabelSelectModal('comicpot-proofreading');
-        return;
     }
 
     _cpExecuteProofreadingTransition();
@@ -641,21 +814,57 @@ function cpSwitchPanelTab(tab) {
     // ビューアーと校正結果の表示切替
     const viewerBody = document.getElementById('cpViewerBody');
     const filterEl = document.getElementById('cpPanelCategoryFilter');
+    const syncBtn = document.getElementById('cpViewerSyncToggle');
     if (tab === 'viewer') {
         cpResultPanelBody.style.display = 'none';
         if (viewerBody) viewerBody.style.display = 'flex';
-        if (filterEl) filterEl.style.display = 'none';
+        // ビューアー時: フィルタはグレーアウト、ページ連動は有効
+        if (filterEl) filterEl.disabled = true;
+        if (syncBtn) syncBtn.disabled = false;
     } else {
         cpResultPanelBody.style.display = '';
         if (viewerBody) viewerBody.style.display = 'none';
-        if (filterEl) filterEl.style.display = '';
+        // チェック時: フィルタは有効、ページ連動はグレーアウト
+        if (filterEl) filterEl.disabled = false;
+        if (syncBtn) syncBtn.disabled = true;
         cpRenderPanelContent();
         cpSetupPanelCategoryFilter();
     }
 }
 
 function goToResultViewerPageFromEditor() {
-    goToResultViewerPage();
+    const editorPage = document.getElementById('comicPotEditorPage');
+    const resultViewer = document.getElementById('resultViewerPage');
+
+    if (!editorPage || !resultViewer) {
+        goToResultViewerPage();
+        return;
+    }
+
+    editorPage.classList.add('cp-slide-out-left');
+    setTimeout(() => {
+        editorPage.style.display = 'none';
+        editorPage.classList.remove('cp-slide-out-left');
+
+        ['landingScreen', 'mainWrapper', 'proofreadingPage', 'specSheetPage'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        resultViewer.style.display = 'block';
+        resultViewer.classList.add('cp-slide-in-right');
+        setTimeout(() => resultViewer.classList.remove('cp-slide-in-right'), 320);
+
+        if (typeof switchResultTab === 'function') {
+            const hasVariation = Object.keys(state.currentVariationData).length > 0;
+            const hasSimple = state.currentSimpleData.length > 0;
+            if (hasVariation && !hasSimple) {
+                switchResultTab('variation', true);
+            } else {
+                switchResultTab('simple', true);
+            }
+        }
+    }, 220);
 }
 
 function cpRenderPanelContent() {
@@ -1139,6 +1348,9 @@ async function _loadJsonFromPath(filePath) {
 
         // パネルを表示して更新
         cpShowResultPanel();
+        if (typeof window.updateProofreadingResultButton === 'function') {
+            window.updateProofreadingResultButton();
+        }
 
         const fileName = filePath.split(/[/\\]/).pop();
         cpShowNotify(fileName + ' を読み込みました', 'success');
@@ -1245,16 +1457,26 @@ function cpJumpToExcerpt(pageText, excerptText) {
     const { pageNum } = extractVolumeAndPage(pageText);
     if (!pageNum || pageNum < 1) return;
 
-    // excerptから括弧等を除去して検索用テキストを作成
-    const searchText = excerptText.replace(/[「」『』]/g, '').replace(/\s+/g, '').trim();
-    if (!searchText) return;
+    // excerptから括弧等を除去して検索用テキストを作成（excerpt 無しでもページジャンプは行う）
+    const searchText = (excerptText || '').replace(/[「」『』]/g, '').replace(/\s+/g, '').trim();
 
     if (cpIsEditing) {
-        // ===== 編集モード（textarea） =====
+        // ===== 編集モード（textarea — 非表示でも内部選択を合わせておく） =====
         cpJumpInTextarea(pageNum, searchText);
     } else {
         // ===== セレクトモード（チャンク表示） =====
         cpJumpInSelectMode(pageNum, searchText);
+    }
+
+    // PsDesign 風パネル側: 該当する .cp-page-section（=cp-page-section-header）まで実スクロール。
+    // 全ページモードでは render 内の scrollIntoView が動き、ページごとモードでは pageNum のページに切替わる。
+    _cpLastReportedPage = pageNum;
+    cpUpdateCurrentPageBadge(pageNum);
+    cpRenderPageTextPanel(pageNum);
+
+    // 画像ビューアも同ページに連動（連動トグルの状態に関わらず、リンク操作は明示的なので強制ジャンプ）
+    if (typeof window.cpViewerJumpToPage === 'function') {
+        try { window.cpViewerJumpToPage(pageNum); } catch (e) { /* viewer 未初期化なら無視 */ }
     }
 }
 
@@ -1271,7 +1493,8 @@ function cpJumpInTextarea(pageNum, searchText) {
     for (let i = 0; i < lines.length; i++) {
         const trimmedLine = lines[i].trim();
         const isVolumeMarker = /^\[\d+巻\]$/.test(trimmedLine);
-        const exportPageMatch = trimmedLine.match(/^<<(\d+)Page>>$/);
+        // 全角数字・前後空白を許容（PsDesign 準拠）
+        const exportPageMatch = trimmedLine.match(/^<<\s*([0-9０-９]+)\s*Page\s*>>$/i);
         const isDash = /^-{10}$/.test(trimmedLine);
 
         if (isVolumeMarker) {
@@ -1284,7 +1507,8 @@ function cpJumpInTextarea(pageNum, searchText) {
         if (exportPageMatch || isDash) {
             let nextPage;
             if (exportPageMatch) {
-                nextPage = parseInt(exportPageMatch[1], 10);
+                nextPage = _cpToHalfWidthInt(exportPageMatch[1]);
+                if (nextPage === null) nextPage = currentPage + 1;
             } else {
                 nextPage = currentPage + 1;
             }
@@ -1426,6 +1650,46 @@ function cpShowNotify(message, type) {
     cpNotifyTimer = setTimeout(() => cpNotificationEl.classList.remove('show'), 2500);
 }
 
+// ===== ページマーカ走査ヘルパ（PsDesign 準拠・全角数字・空白許容） =====
+const CP_PAGE_MARKER_RE = /<<\s*([0-9０-９]+)\s*Page\s*>>/gi;
+function _cpToHalfWidthInt(s) {
+    const half = String(s).replace(/[０-９]/g, ch => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0));
+    const n = parseInt(half, 10);
+    return Number.isFinite(n) ? n : null;
+}
+// textarea 全体を走査してページ区間 [{page, start, markerEnd, end}] を返す
+function cpScanPageRegions(text) {
+    if (!text) return [];
+    const regions = [];
+    const re = new RegExp(CP_PAGE_MARKER_RE.source, CP_PAGE_MARKER_RE.flags);
+    let prev = null;
+    let m;
+    while ((m = re.exec(text)) !== null) {
+        const page = _cpToHalfWidthInt(m[1]);
+        if (page === null) continue;
+        if (prev) prev.end = m.index;
+        prev = { page, start: m.index, markerEnd: m.index + m[0].length, end: text.length };
+        regions.push(prev);
+    }
+    if (regions.length === 0) {
+        regions.push({ page: 1, start: 0, markerEnd: 0, end: text.length });
+    }
+    return regions;
+}
+// 文字オフセットから所属ページ番号を返す（二分探索）
+function cpPageForOffset(regions, offset) {
+    if (!regions || regions.length === 0) return null;
+    let lo = 0, hi = regions.length - 1, ans = regions[0].page;
+    while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        const r = regions[mid];
+        if (offset < r.start) hi = mid - 1;
+        else if (offset >= r.end) lo = mid + 1;
+        else { ans = r.page; break; }
+    }
+    return ans;
+}
+
 // ===== パース =====
 function cpParseTextToChunks(inputText) {
     if (!inputText) return [];
@@ -1435,7 +1699,7 @@ function cpParseTextToChunks(inputText) {
     let currentChunk = [];
 
     const volumeMarkerPattern = /^\[\d+巻\]$/;
-    const exportPagePattern = /^<<\d+Page>>$/;
+    const exportPagePattern = /^<<\s*[0-9０-９]+\s*Page\s*>>$/i;
 
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -1506,63 +1770,137 @@ function cpReconstructText(chunkList) {
     return result;
 }
 
+// ===== Comic-Bridge 風: エディタ列ステータス表示ヘルパー =====
+function cpUpdateEditorFileRow() {
+    const nameEl = document.getElementById('cpEditorFileName');
+    const dirtyEl = document.getElementById('cpEditorDirtyMark');
+    if (!nameEl) return;
+    if (cpFileName) {
+        nameEl.textContent = cpFileName;
+        nameEl.title = cpFilePath || cpFileName;
+    } else if (cpText && cpText.length > 0) {
+        nameEl.textContent = '(未保存)';
+        nameEl.title = '';
+    } else {
+        nameEl.textContent = '未読込 — 「開く」または .txt をドロップ';
+        nameEl.title = '';
+    }
+    if (dirtyEl) {
+        const isDirty = cpText !== cpSavedText && cpText && cpText.length > 0;
+        dirtyEl.style.display = isDirty ? '' : 'none';
+    }
+}
+
+let _cpFlashEditorNoticeTimer = null;
+function cpFlashEditorNotice(msg) {
+    const el = document.getElementById('cpEditorFlashMsg');
+    if (!el) return;
+    el.textContent = msg || '';
+    // CSS アニメーションを再トリガするためクラスを付け直す
+    el.classList.remove('cp-editor-filerow-flash');
+    void el.offsetWidth; // reflow
+    el.classList.add('cp-editor-filerow-flash');
+    clearTimeout(_cpFlashEditorNoticeTimer);
+    _cpFlashEditorNoticeTimer = setTimeout(() => { el.textContent = ''; }, 1800);
+}
+
+function cpUpdateEditorFooter() {
+    const footer = document.getElementById('cpEditorFooter');
+    const charEl = document.getElementById('cpEditorCharCount');
+    const lineEl = document.getElementById('cpEditorLineCount');
+    const warnEl = document.getElementById('cpEditorUnsavedWarn');
+    if (!footer) return;
+    if (!cpText || cpText.length === 0) {
+        footer.style.display = 'none';
+        return;
+    }
+    footer.style.display = '';
+    if (charEl) charEl.textContent = cpText.length.toLocaleString() + ' 文字';
+    if (lineEl) lineEl.textContent = cpText.split('\n').length.toLocaleString() + ' 行';
+    if (warnEl) {
+        const dirty = cpText !== cpSavedText;
+        warnEl.textContent = (!cpFilePath && dirty) ? '未保存 — 「別名保存」で書き出し' : '';
+    }
+}
+
+function cpUpdateEditorEmptyState() {
+    const empty = document.getElementById('cpEditorEmptyState');
+    if (!empty) return;
+    // 編集モード && テキスト空 のときのみ表示。
+    // 選択モード時の空状態は cpSelectMode 内の既存ドロップゾーンが担当するため、
+    // ここでは編集モード時のみ表示してプレースホルダの二重表示を防ぐ。
+    const showEmpty = cpIsEditing && (!cpText || cpText.length === 0);
+    empty.style.display = showEmpty ? '' : 'none';
+}
+
 // ===== 表示更新 =====
 function cpRender() {
     if (!cpEditTextArea) return;
 
+    // 並び替え機能を撤去したため常に編集モード固定
+    cpIsEditing = true;
+
     const hasText = cpText && cpText.trim() !== '';
     cpBtnCopy.disabled = !hasText;
 
-    cpCopyBtnFloat.style.display = hasText ? 'flex' : 'none';
-
-    // コンテキストバー更新
-    cpContextBar.style.display = hasText ? 'flex' : 'none';
-    const segSelect = document.getElementById('cpModeSegSelect');
-    const segEdit = document.getElementById('cpModeSegEdit');
-    if (cpIsEditing) {
-        cpContextBar.classList.add('editing');
-        if (segSelect) segSelect.classList.remove('active');
-        if (segEdit) segEdit.classList.add('active');
-        cpBtnDeleteMark.style.display = 'none';
-        cpBtnRuby.style.display = 'inline-block';
-    } else {
-        cpContextBar.classList.remove('editing');
-        if (segSelect) segSelect.classList.add('active');
-        if (segEdit) segEdit.classList.remove('active');
-        cpBtnDeleteMark.style.display = 'inline-block';
-        cpBtnRuby.style.display = 'none';
+    // コピーボタンは常に表示（disabled でグレーアウト）
+    if (cpCopyBtnFloat) {
+        cpCopyBtnFloat.style.display = 'flex';
+        cpCopyBtnFloat.disabled = !hasText;
     }
+
+    // コンテキストバー: 未読込時でも常に表示（テキスト読込ボタンのみ有効、他はグレーアウト）
+    cpContextBar.style.display = 'flex';
+    cpContextBar.classList.add('editing');
+    if (cpBtnRuby) cpBtnRuby.style.display = 'inline-block';
 
     cpUpdateToolbarState();
 
-    if (cpIsEditing) {
-        cpEditTextArea.style.display = 'block';
-        cpSelectModeEl.style.display = 'none';
-        cpEditTextArea.value = cpText;
-    } else {
-        cpEditTextArea.style.display = 'none';
-        cpSelectModeEl.style.display = '';
-        cpRenderSelectMode();
-    }
+    // 常に textarea を表示
+    // textarea はデータ保持用に DOM に残すが UI 上は非表示（PsDesign 風パネルが表示を担当）
+    cpEditTextArea.style.display = 'none';
+    if (cpSelectModeEl) cpSelectModeEl.style.display = 'none';
+    cpEditTextArea.value = cpText;
 
-    cpFileNameDisplay.textContent = cpFileName;
+    cpFileNameDisplay.textContent = 'テキストエディタ';
     cpUpdateStatusBar();
+
+    // Comic-Bridge 風ステータス UI 更新
+    cpUpdateEditorFileRow();
+    cpUpdateEditorFooter();
+    cpUpdateEditorEmptyState();
+    // ページ連動バッジ更新（テキスト切替時）
+    _cpLastReportedPage = null;
+    cpUpdateCurrentPageBadge();
+    // PsDesign 風: テキスト切替時に新パネルも初期化（折りたたみ状態復元 + 初回描画）
+    cpInitPageTextPanel();
+    cpRenderPageTextPanel(null);
 }
 
 function cpUpdateToolbarState() {
     const hasText = cpText && cpText.trim() !== '';
-    const hasDialogueSelected = !cpIsEditing && cpSelectedChunkIndex !== null
-        && cpChunks[cpSelectedChunkIndex] && cpChunks[cpSelectedChunkIndex].type === 'dialogue';
-    cpBtnDeleteMark.disabled = !hasDialogueSelected;
-    cpBtnRuby.disabled = !cpIsEditing;
+    // 並び替え撤去後は textarea 上の操作のみ。テキストがあれば常に有効。
+    if (cpBtnRuby) cpBtnRuby.disabled = !hasText;
     cpBtnConvert.disabled = !hasText;
     cpBtnSave.disabled = !hasText;
     cpBtnSaveAs.disabled = !hasText;
+    // コンテキストバー上のコピー・ページ表示モードタブも hasText に連動
+    if (cpCopyBtnFloat) cpCopyBtnFloat.disabled = !hasText;
+    const toggleWrap = document.getElementById('cpShowAllPagesLabelWrap');
+    if (toggleWrap) toggleWrap.classList.toggle('disabled', !hasText);
+    const allBtn = document.getElementById('cpPageModeAll');
+    const singleBtn = document.getElementById('cpPageModeSingle');
+    if (allBtn) allBtn.disabled = !hasText;
+    if (singleBtn) singleBtn.disabled = !hasText;
 }
 
 function cpRenderSelectMode() {
+    // 並び替え機能を撤去したため no-op（cpSelectModeEl は存在しない）
+    if (!cpSelectModeEl) return;
     cpSelectModeEl.innerHTML = '';
+    return;
 
+    /* 旧 select モード描画ロジックは残置（再有効化時の参照用）
     if (!cpText || cpChunks.length === 0) {
         const dz = document.createElement('div');
         dz.className = 'cp-viewer-dropzone';
@@ -1667,6 +2005,7 @@ function cpRenderSelectMode() {
 
     cpUpdateToolbarState();
     cpScrollToSelected();
+    */
 }
 
 // ルビパターンをハイライト表示するためのレンダリング
@@ -1721,6 +2060,8 @@ function cpScrollToSelected() {
 }
 
 function cpUpdateStatusBar() {
+    // ステータスバー (#cpStatusInfo) は撤去済み — no-op（呼び出し側互換のためダミー関数を残す）
+    if (!cpStatusInfo) return;
     const dialogueCount = cpChunks.filter(c => c.type === 'dialogue').length;
     let info = '';
     if (cpChunks.length > 0) info = dialogueCount + ' 個のセリフ';
@@ -1739,14 +2080,51 @@ function cpUpdateStatusBar() {
     cpStatusInfo.textContent = info;
 }
 
-// ===== ファイル読み込み =====
+// ===== 見本PDF読み込み（ビューアへ） =====
 function cpHandleFileOpen() {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.txt';
-    input.onchange = (e) => {
+    input.accept = '.pdf';
+    input.onchange = async (e) => {
         const file = e.target.files[0];
-        if (file && (file.type === 'text/plain' || file.name.endsWith('.txt'))) {
+        if (!file) return;
+        const lowerName = (file.name || '').toLowerCase();
+        const isPdf = lowerName.endsWith('.pdf') || file.type === 'application/pdf';
+
+        if (isPdf) {
+            // PDF → ビューアへ読込（バイト経由）
+            try {
+                if (typeof window.cpViewerLoadPdfFile === 'function') {
+                    await window.cpViewerLoadPdfFile(file);
+                }
+                // 校正結果パネルを開き、ビューアタブへ切替
+                if (typeof cpShowResultPanel === 'function') cpShowResultPanel();
+                if (typeof cpSwitchPanelTab === 'function') cpSwitchPanelTab('viewer');
+                cpShowNotify('PDFを読み込みました: ' + file.name, 'var(--sage)');
+            } catch (err) {
+                console.error('PDF load failed:', err);
+                cpShowNotify('PDFの読み込みに失敗しました', '#ef4444');
+            }
+            return;
+        }
+
+        cpShowNotify('対応形式は .pdf です', '#f59e0b');
+    };
+    input.click();
+}
+
+// ===== テキスト読み込み（.txt = エディタへ） =====
+function cpHandleTextFileOpen() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.txt';
+    input.onchange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const lowerName = (file.name || '').toLowerCase();
+        const isTxt = lowerName.endsWith('.txt');
+
+        if (isTxt) {
             cpFileName = file.name;
             // Electron環境ではFile.pathでフルパスが取得可能
             cpFilePath = file.path || '';
@@ -1760,11 +2138,15 @@ function cpHandleFileOpen() {
                 cpSavedText = cpText;
                 cpChunks = cpParseTextToChunks(content);
                 cpSelectedChunkIndex = null;
-                cpIsEditing = false;
+                cpIsEditing = true;
                 cpRender();
+                cpFlashEditorNotice('開きました: ' + cpFileName);
             };
             reader.readAsText(file, 'UTF-8');
+            return;
         }
+
+        cpShowNotify('対応形式は .txt です', '#f59e0b');
     };
     input.click();
 }
@@ -1787,6 +2169,9 @@ async function cpHandleFileSave() {
         if (result.success) {
             cpSavedText = cpText;
             cpShowNotify('保存しました: ' + cpFileName, 'var(--sage)');
+            cpFlashEditorNotice('保存しました');
+            cpUpdateEditorFileRow();
+            cpUpdateEditorFooter();
         } else {
             cpShowNotify('保存に失敗しました', '#ef4444');
         }
@@ -1818,8 +2203,11 @@ async function cpHandleFileSaveAs() {
         // ファイル名を更新
         const parts = dialogResult.filePath.replace(/\\/g, '/').split('/');
         cpFileName = parts[parts.length - 1];
-        cpFileNameDisplay.textContent = cpFileName;
+        cpFileNameDisplay.textContent = 'テキストエディタ';
         cpShowNotify('保存しました: ' + cpFileName, 'var(--sage)');
+        cpFlashEditorNotice('保存しました: ' + cpFileName);
+        cpUpdateEditorFileRow();
+        cpUpdateEditorFooter();
     } else {
         cpShowNotify('保存に失敗しました', '#ef4444');
     }
@@ -1831,6 +2219,7 @@ function cpHandleCopy() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(cpText).then(() => {
             cpShowNotify('コピーしました！', 'var(--sage)');
+            cpFlashEditorNotice('コピーしました');
         }).catch(() => cpFallbackCopy());
     } else {
         cpFallbackCopy();
@@ -1843,46 +2232,68 @@ function cpFallbackCopy() {
     ta.style.cssText = 'position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); cpShowNotify('コピーしました！', 'var(--sage)'); }
+    try { document.execCommand('copy'); cpShowNotify('コピーしました！', 'var(--sage)'); cpFlashEditorNotice('コピーしました'); }
     catch (e) { showToast('コピーに失敗しました。', 'error'); }
     document.body.removeChild(ta);
 }
 
 // ===== // 削除マーク切替 =====
 function cpToggleDeleteMark() {
-    if (cpSelectedChunkIndex === null || !cpChunks[cpSelectedChunkIndex]) return;
-    if (cpChunks[cpSelectedChunkIndex].type !== 'dialogue') return;
+    // textarea 上の現在行 / 選択行に対して // を付与/解除（Comic-Bridge 互換）
+    const ta = cpEditTextArea;
+    if (!ta) return;
+    const value = ta.value;
+    if (!value) return;
+    const selStart = ta.selectionStart;
+    const selEnd = ta.selectionEnd;
+    const savedScrollTop = ta.scrollTop;
 
-    const chunk = cpChunks[cpSelectedChunkIndex];
-    const lines = chunk.content.split('\n');
-    const allMarked = lines.every(l => l.trimStart().startsWith('//'));
+    const lineStart = value.lastIndexOf('\n', selStart - 1) + 1;
+    let lineEndIdx = value.indexOf('\n', selEnd);
+    if (lineEndIdx === -1) lineEndIdx = value.length;
 
-    if (allMarked) {
-        for (let i = 0; i < lines.length; i++) {
-            lines[i] = lines[i].replace(/^(\s*)\/\/\s?/, '$1');
-        }
-        cpShowNotify('削除マークを解除しました', '#6366f1');
-    } else {
-        for (let i = 0; i < lines.length; i++) {
-            if (!lines[i].trimStart().startsWith('//')) {
-                lines[i] = '//' + lines[i];
-            }
-        }
-        cpShowNotify('削除マークを付与しました', '#ef4444');
-    }
+    const before = value.slice(0, lineStart);
+    const target = value.slice(lineStart, lineEndIdx);
+    const after = value.slice(lineEndIdx);
+    const lines = target.split('\n');
+    const allMarked = lines.every(l => l.startsWith('//'));
+    const newLines = allMarked
+        ? lines.map(l => l.slice(2))
+        : lines.map(l => (l.startsWith('//') ? l : '//' + l));
+    const newValue = before + newLines.join('\n') + after;
 
-    cpChunks[cpSelectedChunkIndex].content = lines.join('\n');
-    cpText = cpReconstructText(cpChunks);
-    cpChunks = cpParseTextToChunks(cpText);
-    cpRenderSelectMode();
+    ta.value = newValue;
+    cpText = newValue;
+    cpComicPotHeader = cpExtractComicPotHeader(newValue);
+    cpChunks = cpParseTextToChunks(newValue);
+
+    const delta = allMarked ? -2 : 2;
+    const newSelStart = Math.max(lineStart, selStart + delta);
+    const newSelEnd = selEnd + delta * lines.length;
+    requestAnimationFrame(() => {
+        ta.focus();
+        ta.setSelectionRange(newSelStart, newSelEnd);
+        ta.scrollTop = savedScrollTop;
+    });
+
+    cpShowNotify(allMarked ? '削除マークを解除しました' : '削除マークを付与しました', allMarked ? '#6366f1' : '#ef4444');
+    cpUpdateEditorFileRow();
+    cpUpdateEditorFooter();
+    return;
 }
 
 // ===== ルビ付け =====
 function cpFormatRuby(parent, ruby) {
+    if (cpRubyMode === 'standard') {
+        return parent + '（' + ruby + '）';
+    }
     return '｛' + parent + '｝（' + ruby + '）';
 }
 
 function cpFormatRubyPlaceholder(parent) {
+    if (cpRubyMode === 'standard') {
+        return parent + '（...）';
+    }
     return '｛' + parent + '｝（...）';
 }
 
@@ -1909,15 +2320,61 @@ function cpUpdateRubyPreview() {
     }
 }
 
+// .cp-page-text-block 内の選択を絶対オフセット付きで保持する
+// （ルビボタン押下時には focus が外れて選択が消えるので、selectionchange で逐次キャプチャしておく）
+function _cpUpdateBlockSelectionFromDom() {
+    const sel = window.getSelection && window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+    const range = sel.getRangeAt(0);
+    let startEl = range.startContainer;
+    if (startEl && startEl.nodeType !== 1) startEl = startEl.parentNode;
+    const block = (startEl && startEl.closest) ? startEl.closest('.cp-page-text-block') : null;
+    if (!block) return;
+    let endEl = range.endContainer;
+    if (endEl && endEl.nodeType !== 1) endEl = endEl.parentNode;
+    if (!endEl || !endEl.closest || endEl.closest('.cp-page-text-block') !== block) return; // 同一ブロック内のみ対象
+
+    const blockText = block.textContent || '';
+    const blockOffset = parseInt(block.dataset.offset || '0', 10);
+    const preStart = document.createRange();
+    preStart.selectNodeContents(block);
+    preStart.setEnd(range.startContainer, range.startOffset);
+    const startInBlock = preStart.toString().length;
+    const preEnd = document.createRange();
+    preEnd.selectNodeContents(block);
+    preEnd.setEnd(range.endContainer, range.endOffset);
+    const endInBlock = preEnd.toString().length;
+    if (startInBlock === endInBlock) return;
+
+    const selectedText = blockText.substring(startInBlock, endInBlock);
+    if (!selectedText || selectedText.includes('\n')) return;
+
+    _cpLastBlockSelection = {
+        absStart: blockOffset + startInBlock,
+        absEnd: blockOffset + endInBlock,
+        text: selectedText,
+    };
+}
+document.addEventListener('selectionchange', _cpUpdateBlockSelectionFromDom);
+
 function cpOpenRubyModal() {
     if (!cpIsEditing) {
         cpShowNotify('編集モードで文字を選択してください', '#f59e0b');
         return;
     }
 
-    const start = cpEditTextArea.selectionStart;
-    const end = cpEditTextArea.selectionEnd;
-    const selected = cpEditTextArea.value.substring(start, end);
+    // 1) ブロック上の選択を優先（実 UI は contentEditable な .cp-page-text-block）
+    // 2) フォールバックで textarea の selection を見る
+    let start, end, selected;
+    if (_cpLastBlockSelection) {
+        start = _cpLastBlockSelection.absStart;
+        end = _cpLastBlockSelection.absEnd;
+        selected = _cpLastBlockSelection.text;
+    } else {
+        start = cpEditTextArea.selectionStart;
+        end = cpEditTextArea.selectionEnd;
+        selected = cpEditTextArea.value.substring(start, end);
+    }
 
     if (!selected || selected.trim() === '' || selected.includes('\n')) {
         cpShowNotify('ルビを付ける文字を選択してください（1行以内）', '#f59e0b');
@@ -1954,27 +2411,28 @@ function cpApplyRuby() {
     }
 
     const replacement = cpFormatRuby(cpRubySelectedText, rubyText);
-    const scrollTop = cpEditTextArea.scrollTop;
 
-    // Undo対応: execCommand('insertText') でブラウザのundoスタックに載せる
-    cpEditTextArea.focus();
-    cpEditTextArea.setSelectionRange(cpRubySelectionStart, cpRubySelectionEnd);
-    document.execCommand('insertText', false, replacement);
+    // textarea は display:none のため execCommand は使えない。value を直接書き換える。
+    const value = cpEditTextArea.value;
+    const updated = value.substring(0, cpRubySelectionStart) + replacement + value.substring(cpRubySelectionEnd);
 
-    let content = cpEditTextArea.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    cpEditTextArea.value = updated;
+    let content = updated.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     cpComicPotHeader = cpExtractComicPotHeader(content);
     cpText = content;
     cpChunks = cpParseTextToChunks(content);
 
+    // 1度使った選択は破棄（誤って次のルビ付けに使われないように）
+    _cpLastBlockSelection = null;
+
     cpCloseRubyModal();
 
-    const newCursorPos = cpRubySelectionStart + replacement.length;
-    cpEditTextArea.setSelectionRange(newCursorPos, newCursorPos);
-    cpEditTextArea.focus();
-    cpEditTextArea.scrollTop = scrollTop;
+    // パネル側を再描画して反映
+    cpRenderPageTextPanel(_cpLastReportedPage);
 
     cpShowNotify('ルビを適用しました', '#7c3aed');
     cpUpdateStatusBar();
+    cpUpdateEditorFooter();
 }
 
 // ===== 形式変換 =====
@@ -2229,27 +2687,9 @@ function cpHandleDropChunk(e, dropIdx) {
 }
 
 // ===== モード切替 =====
+// 並び替え機能を撤去したため、常に編集モードのまま no-op
 function cpToggleEditMode() {
-    if (cpIsEditing) {
-        cpScrollPosition = cpEditTextArea.scrollTop;
-        const cursorPos = cpEditTextArea.selectionStart;
-        let content = cpEditTextArea.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-        cpComicPotHeader = cpExtractComicPotHeader(content);
-        cpText = content;
-        cpChunks = cpParseTextToChunks(content);
-        const cursorChunkIndex = cpGetChunkIndexFromCursorPosition(cursorPos);
-        cpIsEditing = false;
-        cpSelectedChunkIndex = cursorChunkIndex;
-        cpRender();
-        setTimeout(() => { cpSelectModeEl.scrollTop = cpScrollPosition; }, 0);
-    } else {
-        cpScrollPosition = cpSelectModeEl.scrollTop;
-        cpSelectedChunkIndex = null;
-        cpIsEditing = true;
-        cpRender();
-        cpEditTextArea.focus();
-        cpEditTextArea.scrollTop = cpScrollPosition;
-    }
+    cpIsEditing = true;
 }
 
 function cpGetChunkIndexFromCursorPosition(cursorPos) {
@@ -2313,6 +2753,11 @@ function cpSetupEventListeners() {
         });
     }
 
+    // 方向キーでのページ移動（cp-editor-column 内のフォーカス時のみ有効）
+    if (cpEditorColumn) {
+        cpEditorColumn.addEventListener('keydown', cpEditorColumnKeydown);
+    }
+
     // テキストエリア入力
     cpEditTextArea.addEventListener('input', () => {
         let content = cpEditTextArea.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
@@ -2322,9 +2767,27 @@ function cpSetupEventListeners() {
         cpUpdateStatusBar();
         const hasText = cpText && cpText.trim() !== '';
         cpBtnCopy.disabled = !hasText;
-    
-        cpCopyBtnFloat.style.display = hasText ? 'flex' : 'none';
+
+        if (cpCopyBtnFloat) { cpCopyBtnFloat.style.display = 'flex'; cpCopyBtnFloat.disabled = !hasText; }
         cpBtnConvert.disabled = !hasText;
+        cpUpdateToolbarState();
+
+        // Comic-Bridge 風ステータス UI を即時更新（dirty ●、文字数・行数）
+        cpUpdateEditorFileRow();
+        cpUpdateEditorFooter();
+        cpUpdateEditorEmptyState();
+
+        // ページ連動: 現在ページバッジ更新 + 必要ならビューア側もジャンプ
+        cpHandleCursorPageChange();
+        // PsDesign 風パネル: 編集による構造変化に追従（debounce）
+        cpSchedulePageTextPanelRender();
+    });
+
+    // ページ連動の逆方向監視（カーソル移動・クリック・キーボード操作）
+    cpEditTextArea.addEventListener('click', cpHandleCursorPageChange);
+    cpEditTextArea.addEventListener('keyup', cpHandleCursorPageChange);
+    document.addEventListener('selectionchange', () => {
+        if (document.activeElement === cpEditTextArea) cpHandleCursorPageChange();
     });
 
     // ルビ入力のリアルタイムプレビュー
@@ -2367,21 +2830,8 @@ function cpSetupEventListeners() {
         }
         if (cpShiftPressed) cpOtherKeyPressed = true;
 
-        if (cpIsEditing && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey) return;
-
-        if (e.shiftKey && e.key === 'ArrowUp') {
-            e.preventDefault(); cpMoveChunkUp();
-        } else if (e.shiftKey && e.key === 'ArrowDown') {
-            e.preventDefault(); cpMoveChunkDown();
-        } else if (!e.shiftKey && e.key === 'ArrowUp' && !cpIsEditing) {
-            e.preventDefault(); cpSelectPreviousChunk();
-        } else if (!e.shiftKey && e.key === 'ArrowDown' && !cpIsEditing) {
-            e.preventDefault(); cpSelectNextChunk();
-        } else if (e.key === 'Backspace' && !cpIsEditing && cpSelectedChunkIndex !== null) {
-            e.preventDefault(); cpDeleteSelectedChunk();
-        } else if (e.key === 'Delete' && !cpIsEditing && cpSelectedChunkIndex !== null) {
-            e.preventDefault(); cpToggleDeleteMark();
-        }
+        // 並び替え機能を撤去したためチャンクナビゲーション系ショートカットは無効化
+        // textarea のデフォルト動作（矢印キー・Backspace・Delete）に委譲
     });
 
     window.addEventListener('keyup', (e) => {
@@ -2397,17 +2847,376 @@ function cpSetupEventListeners() {
 }
 
 // ===== ビューアー連動: ページ同期 =====
+// ビューア → テキスト 一方向ジャンプ。suppress フラグで textarea → ビューアの逆同期を一時抑止
+let _cpSyncSuppress = false;
 function cpSyncToPage(pageNum) {
     if (!cpText) return;
-    if (cpIsEditing) {
-        cpJumpInTextarea(pageNum, '');
-    } else {
-        cpJumpInSelectMode(pageNum, '');
+    _cpSyncSuppress = true;
+    try {
+        if (cpIsEditing) {
+            cpJumpInTextarea(pageNum, '');
+        } else {
+            cpJumpInSelectMode(pageNum, '');
+        }
+        cpUpdateCurrentPageBadge(pageNum);
+        _cpLastReportedPage = pageNum;
+        // PsDesign 風: 現在ページのテキストブロック表示パネルも追従
+        cpRenderPageTextPanel(pageNum);
+    } finally {
+        // 直後の selectionchange / click イベントを取りこぼさないように次フレームで解除
+        requestAnimationFrame(() => { _cpSyncSuppress = false; });
     }
 }
 
+// textarea のカーソル位置を監視し、所属ページが変わったらビューアを連動させる（逆同期）
+let _cpLastReportedPage = null;
+function cpHandleCursorPageChange() {
+    if (_cpSyncSuppress) return;
+    if (!cpEditTextArea) return;
+    if (!cpText) return;
+    const regions = cpScanPageRegions(cpEditTextArea.value);
+    const page = cpPageForOffset(regions, cpEditTextArea.selectionStart);
+    cpUpdateCurrentPageBadge(page);
+    if (page === null) return;
+    // ページが変わったら新パネルも追従描画（連動 OFF でもパネルは追従させる）
+    const pageChanged = page !== _cpLastReportedPage;
+    if (pageChanged) {
+        _cpLastReportedPage = page;
+        cpRenderPageTextPanel(page);
+    }
+    // 連動 ON のときだけビューアを動かす
+    if (!window.viewerPageSyncEnabled) return;
+    if (!pageChanged) return;
+    if (typeof window.cpViewerJumpToPage === 'function') {
+        window.cpViewerJumpToPage(page);
+    }
+}
+
+// 現在ページバッジを更新（P{現在} / {全数}）
+function cpUpdateCurrentPageBadge(pageOverride) {
+    const badge = document.getElementById('cpCurrentPageBadge');
+    if (!badge) return;
+    if (!cpText || !cpEditTextArea) { badge.style.display = 'none'; return; }
+    const regions = cpScanPageRegions(cpEditTextArea.value || cpText);
+    const total = regions.length > 0 ? regions[regions.length - 1].page : 0;
+    const offset = cpEditTextArea.selectionStart || 0;
+    const current = (pageOverride != null) ? pageOverride : cpPageForOffset(regions, offset);
+    if (!total || current == null) { badge.style.display = 'none'; return; }
+    badge.style.display = '';
+    badge.textContent = 'P' + current + ' / ' + total;
+}
+
+// ===== PsDesign 風: 現在ページのテキストブロック表示パネル =====
+// 空行区切りで段落配列に分解（PsDesign txt-source.js の splitBlocksRaw 移植）
+function cpSplitBlocksRaw(s) {
+    if (!s) return [];
+    return s
+        .split(/\n\s*\n/)
+        .map(p => p.replace(/^\n+|\n+$/g, ''))
+        .filter(p => {
+            if (!p.length) return false;
+            const t = p.trim();
+            // [XX巻] / ---------- 等のセパレータ行は段落として扱わない
+            if (/^\[\d+巻\]$/.test(t)) return false;
+            if (/^-{10}$/.test(t)) return false;
+            // <<NPage>> マーカー単独行も除外（region 解析で既に消費されているが念のため）
+            if (/^<<\s*[0-9０-９]+\s*Page\s*>>$/i.test(t)) return false;
+            // [COMIC-POT] ヘッダ行も除外
+            if (/^\[COMIC-POT(:\w+)?\]$/.test(t)) return false;
+            return true;
+        });
+}
+
+// 全テキストから Map<page, [{text, offset}]> を構築。offset は region.markerEnd を基点とした絶対オフセット
+function cpBuildPageBlocks(text) {
+    const map = new Map();
+    if (!text) return map;
+    const regions = cpScanPageRegions(text);
+    for (const r of regions) {
+        const slice = text.substring(r.markerEnd, r.end);
+        const rawBlocks = cpSplitBlocksRaw(slice);
+        if (!rawBlocks.length) continue;
+        // 各ブロックの絶対オフセットを slice 内 indexOf で算出（同一段落が複数あっても先頭から順に進める）
+        let searchFrom = 0;
+        const blocks = rawBlocks.map(b => {
+            const idx = slice.indexOf(b, searchFrom);
+            const abs = (idx >= 0 ? idx : 0) + r.markerEnd;
+            if (idx >= 0) searchFrom = idx + b.length;
+            return { text: b, offset: abs };
+        });
+        if (!map.has(r.page)) map.set(r.page, []);
+        map.get(r.page).push(...blocks);
+    }
+    return map;
+}
+
+// ブロック編集状態（cpRenderPageTextPanel より前に宣言して TDZ を回避）
+let _cpEditingBlock = false;
+let _cpEditingBlockEl = null;
+// 表示モード: true=全ページ表示 / false=現在ページのみ（デフォルト: 全ページ）
+let _cpShowAllPages = true;
+
+// 編集可能なテキストブロック要素を生成（共通ヘルパ）
+function _cpCreateBlockEl(pageNum, idx, b) {
+    const el = document.createElement('div');
+    el.className = 'cp-page-text-block';
+    el.dataset.blockIndex = String(idx);
+    el.dataset.pageNum = String(pageNum);
+    el.dataset.offset = String(b.offset);
+    el.dataset.originalText = b.text;
+    el.textContent = b.text;
+    el.contentEditable = 'true';
+    el.spellcheck = false;
+    el.title = 'クリックして編集（Esc で取消・Ctrl+Enter で確定）';
+    el.addEventListener('focus', () => {
+        _cpEditingBlock = true;
+        _cpEditingBlockEl = el;
+    });
+    el.addEventListener('blur', () => {
+        _cpEditingBlock = false;
+        _cpEditingBlockEl = null;
+        cpCommitPageTextBlock(pageNum, idx, el);
+    });
+    el.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            el.innerText = el.dataset.originalText || '';
+            el.blur();
+        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            el.blur();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            // ブロック編集中の矢印キーはカーソル移動に使う。
+            // 上位（ビューア document keydown / パネルのページ送り）へは伝播させない。
+            e.stopPropagation();
+        }
+    });
+    return el;
+}
+
+// 現在ページのテキストブロックを #cpPageTextPanelBody に描画
+function cpRenderPageTextPanel(pageNum) {
+    const body = document.getElementById('cpPageTextPanelBody');
+    if (!body) return;
+    // 編集中は再描画でカーソルが飛ばないようスキップ
+    if (_cpEditingBlock) return;
+
+    if (!cpText) {
+        body.innerHTML = '';
+        return;
+    }
+
+    const text = (cpEditTextArea && cpEditTextArea.value) ? cpEditTextArea.value : cpText;
+    const regions = cpScanPageRegions(text);
+    const total = regions.length > 0 ? regions[regions.length - 1].page : 0;
+    const hasMarkers = regions.length > 1 || (regions.length === 1 && regions[0].markerEnd > 0);
+    const pageMap = cpBuildPageBlocks(text);
+    const targetPage = (pageNum != null) ? pageNum : 1;
+
+    body.innerHTML = '';
+
+    if (_cpShowAllPages && hasMarkers) {
+        // ===== 全ページモード =====
+        const pageNumbers = [...pageMap.keys()].sort((a, b) => a - b);
+        if (pageNumbers.length === 0) return;
+        pageNumbers.forEach(pn => {
+            const blocks = pageMap.get(pn) || [];
+            if (blocks.length === 0) return;
+            const section = document.createElement('div');
+            section.className = 'cp-page-section';
+            section.dataset.page = String(pn);
+            if (pn === targetPage) section.classList.add('current-page');
+            const header = document.createElement('div');
+            header.className = 'cp-page-section-header';
+            header.textContent = 'P' + pn;
+            section.appendChild(header);
+            blocks.forEach((b, idx) => section.appendChild(_cpCreateBlockEl(pn, idx, b)));
+            body.appendChild(section);
+        });
+        // 画像連動時は現在ページのセクションへスクロール
+        if (pageNum != null) {
+            const targetSec = body.querySelector('.cp-page-section[data-page="' + targetPage + '"]');
+            if (targetSec && typeof targetSec.scrollIntoView === 'function') {
+                targetSec.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            }
+        }
+    } else {
+        // ===== 現在ページのみモード =====
+        const blocks = pageMap.get(targetPage) || [];
+        if (blocks.length === 0) return;
+        // 全ページモードと同じ見た目にするため .cp-page-section でラップ
+        const section = document.createElement('div');
+        section.className = 'cp-page-section current-page';
+        section.dataset.page = String(targetPage);
+        if (hasMarkers) {
+            const header = document.createElement('div');
+            header.className = 'cp-page-section-header';
+            header.textContent = 'P' + targetPage;
+            section.appendChild(header);
+        }
+        blocks.forEach((b, idx) => section.appendChild(_cpCreateBlockEl(targetPage, idx, b)));
+        body.appendChild(section);
+        body.scrollTop = 0;
+    }
+}
+
+// 表示モード切替: セグメントタブから呼ばれる ('all' | 'single')
+function cpSetPageMode(mode) {
+    _cpShowAllPages = (mode !== 'single');
+    const allBtn = document.getElementById('cpPageModeAll');
+    const singleBtn = document.getElementById('cpPageModeSingle');
+    if (allBtn) allBtn.classList.toggle('active', _cpShowAllPages);
+    if (singleBtn) singleBtn.classList.toggle('active', !_cpShowAllPages);
+    cpRenderPageTextPanel(_cpLastReportedPage);
+    // ページごとモードに入ったら、方向キーでのページ移動が即座に効くようパネル本体へフォーカス
+    if (!_cpShowAllPages) {
+        const body = document.getElementById('cpPageTextPanelBody');
+        if (body && typeof body.focus === 'function') {
+            try { body.focus({ preventScroll: true }); } catch (e) { body.focus(); }
+        }
+    }
+}
+
+// 後方互換: 旧チェックボックス時代の関数名。現在は cpSetPageMode のラッパーとしてトグル動作。
+function cpToggleShowAllPages() {
+    cpSetPageMode(_cpShowAllPages ? 'single' : 'all');
+}
+
+// 方向キーでのページ移動（全ページ表示 OFF 時、cp-editor-column 内にフォーカスがあるとき）
+function cpEditorColumnKeydown(e) {
+    let dir = 0;
+    switch (e.key) {
+        case 'ArrowLeft':
+        case 'ArrowUp':
+        case 'PageUp':   dir = -1; break;
+        case 'ArrowRight':
+        case 'ArrowDown':
+        case 'PageDown': dir = 1;  break;
+        default: return;
+    }
+
+    // ブロック編集中: ビューア側の document keydown ハンドラへ伝播させない
+    // （contentEditable は input/textarea/select 判定をすり抜け、ページが勝手に変わってしまうため）。
+    // ブロック内のカーソル移動はブラウザの既定動作に任せる。
+    if (_cpEditingBlock) { e.stopPropagation(); return; }
+
+    if (_cpShowAllPages) return;                       // 全ページ表示時は通常挙動
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    if (e.target && e.target.matches && e.target.matches('input, textarea, select')) return;
+    if (!cpText) return;
+
+    const text = (cpEditTextArea && cpEditTextArea.value) ? cpEditTextArea.value : cpText;
+    const regions = cpScanPageRegions(text);
+    if (!regions || regions.length === 0) return;
+    const pages = [...new Set(regions.map(r => r.page))].sort((a, b) => a - b);
+    if (pages.length < 2) return;
+
+    const cur = (_cpLastReportedPage != null) ? _cpLastReportedPage : pages[0];
+    let idx = pages.indexOf(cur);
+    if (idx < 0) idx = 0;
+    const newIdx = dir > 0 ? Math.min(pages.length - 1, idx + 1) : Math.max(0, idx - 1);
+
+    e.preventDefault();
+    e.stopPropagation();
+    if (newIdx === idx) return;
+
+    const newPage = pages[newIdx];
+    _cpLastReportedPage = newPage;
+    cpRenderPageTextPanel(newPage);
+    cpUpdateCurrentPageBadge(newPage);
+    // 連動 ON のときはビューア画像もジャンプ（OFF のときはテキスト側のみ更新）
+    if (window.viewerPageSyncEnabled && typeof window.cpViewerJumpToPage === 'function') {
+        window.cpViewerJumpToPage(newPage);
+    }
+}
+
+// ブロックの編集内容を textarea / cpText に反映
+function cpCommitPageTextBlock(pageNum, blockIdx, el) {
+    if (!cpEditTextArea) return;
+    // innerText を使い contenteditable の <br>/<div> による改行を保持
+    const newContent = el.innerText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const original = el.dataset.originalText || '';
+    if (newContent === original) return; // 変更なしならスキップ
+
+    const text = cpEditTextArea.value;
+    // 編集前の絶対オフセットと長さを使って当該段落を置換
+    const pageMap = cpBuildPageBlocks(text);
+    const blocks = pageMap.get(pageNum) || [];
+    const target = blocks[blockIdx];
+    if (!target || target.text !== original) {
+        // テキストが想定とズレている場合は安全側で再描画のみ
+        cpRenderPageTextPanel(_cpLastReportedPage);
+        return;
+    }
+
+    const before = text.substring(0, target.offset);
+    const after = text.substring(target.offset + target.text.length);
+    const updated = before + newContent + after;
+
+    cpEditTextArea.value = updated;
+    cpText = updated;
+    cpComicPotHeader = cpExtractComicPotHeader(updated);
+    cpChunks = cpParseTextToChunks(updated);
+
+    // 既存の UI 更新フックを呼び出し
+    cpUpdateStatusBar();
+    cpUpdateEditorFileRow();
+    cpUpdateEditorFooter();
+    cpUpdateEditorEmptyState();
+    if (cpBtnCopy) cpBtnCopy.disabled = !cpText.trim();
+    if (cpCopyBtnFloat) { cpCopyBtnFloat.style.display = 'flex'; cpCopyBtnFloat.disabled = !cpText.trim(); }
+    if (cpBtnConvert) cpBtnConvert.disabled = !cpText.trim();
+    cpUpdateToolbarState();
+
+    // 再描画（編集中フラグは blur で既に false になっている）
+    cpRenderPageTextPanel(_cpLastReportedPage);
+}
+
+// 折りたたみトグル
+function cpPageTextPanelToggle() {
+    const panel = document.getElementById('cpPageTextPanel');
+    if (!panel) return;
+    const collapsed = panel.classList.toggle('collapsed');
+    try { localStorage.setItem('cpPageTextPanelCollapsed', collapsed ? '1' : '0'); } catch (e) {}
+}
+
+// 初期化: localStorage の状態を復元 + トグルチェックボックスと JS 状態を同期
+function cpInitPageTextPanel() {
+    const panel = document.getElementById('cpPageTextPanel');
+    if (!panel) return;
+    try {
+        if (localStorage.getItem('cpPageTextPanelCollapsed') === '1') {
+            panel.classList.add('collapsed');
+        }
+    } catch (e) {}
+    // セグメントタブの初期状態（HTML の .active）を真実の源とし、JS 状態と同期
+    const allBtn = document.getElementById('cpPageModeAll');
+    const singleBtn = document.getElementById('cpPageModeSingle');
+    if (allBtn && singleBtn) {
+        _cpShowAllPages = allBtn.classList.contains('active') || !singleBtn.classList.contains('active');
+        allBtn.classList.toggle('active', _cpShowAllPages);
+        singleBtn.classList.toggle('active', !_cpShowAllPages);
+    }
+    // 方向キーでのページ移動ハンドラを cp-editor-column に登録（冪等）
+    const column = document.getElementById('cpEditorColumn');
+    if (column && !column.dataset.arrowNavBound) {
+        column.addEventListener('keydown', cpEditorColumnKeydown);
+        column.dataset.arrowNavBound = '1';
+    }
+}
+
+// テキスト編集中の再描画 debounce
+let _cpPageTextPanelDebounce = null;
+function cpSchedulePageTextPanelRender() {
+    if (_cpPageTextPanelDebounce) clearTimeout(_cpPageTextPanelDebounce);
+    _cpPageTextPanelDebounce = setTimeout(() => {
+        _cpPageTextPanelDebounce = null;
+        cpRenderPageTextPanel(_cpLastReportedPage);
+    }, 200);
+}
+
 // ES Module exports
-export { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder };
+export { cpInitDomRefs, goToComicPotEditor, cpGoHomeFromEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpScanPageRegions, cpPageForOffset, cpUpdateCurrentPageBadge, cpHandleCursorPageChange, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleTextFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder, cpSplitBlocksRaw, cpBuildPageBlocks, cpRenderPageTextPanel, cpCommitPageTextBlock, cpPageTextPanelToggle, cpInitPageTextPanel, cpToggleShowAllPages, cpSetPageMode };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder });
+Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpGoHomeFromEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpScanPageRegions, cpPageForOffset, cpUpdateCurrentPageBadge, cpHandleCursorPageChange, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleTextFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder, cpSplitBlocksRaw, cpBuildPageBlocks, cpRenderPageTextPanel, cpCommitPageTextBlock, cpPageTextPanelToggle, cpInitPageTextPanel, cpToggleShowAllPages, cpSetPageMode });

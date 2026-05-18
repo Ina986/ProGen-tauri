@@ -76,10 +76,21 @@ function goToProofreadingPage(mode) {
 // [moved to state] proofreadingReturnTo
 
 // ホーム（ランディング画面）へ戻る - 校正ページから
-function goToHomeFromProofreading() {
+async function goToHomeFromProofreading() {
     const proofreading = document.getElementById('proofreadingPage');
     const landing = document.getElementById('landingScreen');
     const main = document.getElementById('mainWrapper');
+
+    const confirmed = (typeof window.confirmHomeReset === 'function')
+        ? await window.confirmHomeReset()
+        : window.confirm('読み込みがリセットされます。よろしいですか？');
+    if (!confirmed) {
+        return;
+    }
+
+    if (typeof window.resetProofreadingResultOnHome === 'function') {
+        window.resetProofreadingResultOnHome();
+    }
 
     // アニメーション付き遷移
     proofreading.classList.add('page-transition-out-down');
@@ -321,6 +332,7 @@ function loadProofreadingFiles(input) {
                 state.proofreadingDetectedNonJoyoWords = detectedLines;
                 showNonJoyoResultPopup(detectedLines, true);
                 updateProofreadingPrompt();
+                showProofreadingLoadNotification();
             }
         };
         reader.readAsText(file);
@@ -328,6 +340,23 @@ function loadProofreadingFiles(input) {
 
     // inputをリセット
     input.value = '';
+}
+
+function showProofreadingLoadNotification() {
+    const existing = document.getElementById('proofreadingLoadToast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'proofreadingLoadToast';
+    toast.className = 'proofreading-load-toast';
+    toast.textContent = 'テキストを読み込みました';
+    document.body.appendChild(toast);
+
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 220);
+    }, 2200);
 }
 
 // 校正用ファイルリスト描画
@@ -343,7 +372,7 @@ function renderProofreadingFileList() {
 
     // ヘッダーのステータス表示を更新
     if (statusEl) {
-        statusEl.textContent = '✓';
+        statusEl.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>';
     }
     if (manageBtn) manageBtn.style.display = 'inline-block';
 }
@@ -393,7 +422,7 @@ function renderProofreadingTxtFileList() {
         return `
             <div class="txt-file-item">
                 <div class="txt-file-info">
-                    <span class="txt-file-icon">📄</span>
+                    <span class="txt-file-icon"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></span></span>
                     <span class="txt-file-name">${file.name}</span>
                     <span class="txt-file-size">${sizeKB}KB</span>
                 </div>
@@ -436,6 +465,7 @@ function addProofreadingTxt(input) {
                 state.proofreadingDetectedNonJoyoWords = detectedLines;
                 showNonJoyoResultPopup(detectedLines, true);
                 updateProofreadingPrompt();
+                showProofreadingLoadNotification();
             }
         };
         reader.readAsText(file);
@@ -537,7 +567,7 @@ function updateProofreadingCheckItems() {
         container.innerHTML = `
             <div class="proofreading-check-header">
                 <span class="proofreading-check-icon"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span></span>
-                <h4>提案チェック項目（10項目）</h4>
+                <h4>提案チェック項目（14項目）</h4>
             </div>
             <div class="proofreading-check-list">
                 <div class="proofreading-check-item variation">
@@ -569,6 +599,18 @@ function updateProofreadingCheckItems() {
                 </div>
                 <div class="proofreading-check-item variation">
                     <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></span> 未成年表現チェック
+                </div>
+                <div class="proofreading-check-item variation">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg></span> 話の流れの矛盾
+                </div>
+                <div class="proofreading-check-item variation">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h10"/><path d="M4 17h16"/><path d="M15 12h5"/></svg></span> 重言・同語反復
+                </div>
+                <div class="proofreading-check-item variation">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h9"/><path d="M17 7h3"/><path d="M4 12h16"/><path d="M4 17h6"/><path d="M14 17h6"/></svg></span> 単語途中の改行
+                </div>
+                <div class="proofreading-check-item variation">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M2 10a8 8 0 1 1 16 0c0 2.6-1.2 4.4-3 6H7c-1.8-1.6-3-3.4-3-6z"/></svg></span> 日本語としての違和感
                 </div>
             </div>
         `;
@@ -603,7 +645,7 @@ function copyProofreadingPrompt() {
     navigator.clipboard.writeText(prompt).then(() => {
         const copyBtn = document.getElementById('proofreadingCopyBtn');
         const originalText = copyBtn.innerHTML;
-        copyBtn.innerHTML = '✓ コピーしました';
+        copyBtn.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> コピーしました';
         copyBtn.style.background = 'var(--sage)';
 
         setTimeout(() => {
@@ -625,7 +667,7 @@ function copyAndOpenGeminiForProofreading() {
 
         const geminiBtn = document.getElementById('proofreadingGeminiBtn');
         const originalText = geminiBtn.innerHTML;
-        geminiBtn.innerHTML = '✓ コピー&開きました';
+        geminiBtn.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span> コピー&開きました';
 
         setTimeout(() => {
             geminiBtn.innerHTML = originalText;
@@ -638,14 +680,18 @@ function toggleAddForm() {
     const body = document.getElementById('addFormBody');
     const toggle = document.getElementById('addFormToggle');
     body.classList.toggle('active');
-    toggle.textContent = body.classList.contains('active') ? '▲' : '▼';
+    toggle.innerHTML = body.classList.contains('active')
+        ? '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>'
+        : '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>';
 }
 
 function toggleSymbolForm() {
     const body = document.getElementById('symbolFormBody');
     const toggle = document.getElementById('symbolFormToggle');
     body.classList.toggle('active');
-    toggle.textContent = body.classList.contains('active') ? '▲' : '▼';
+    toggle.innerHTML = body.classList.contains('active')
+        ? '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>'
+        : '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>';
 }
 
 // モーダル外クリックで閉じる

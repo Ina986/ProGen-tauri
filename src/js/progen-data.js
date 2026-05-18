@@ -306,6 +306,8 @@ function loadManuscriptTxt(input) {
                 if (geminiBtn) {
                     geminiBtn.removeAttribute('disabled');
                 }
+
+                showTextLoadedNotification();
             }
         };
         reader.readAsText(file, 'UTF-8');
@@ -318,6 +320,45 @@ function loadManuscriptTxt(input) {
 // セリフTXTファイルを追加（管理モーダルから）
 function addManuscriptTxt(input) {
     loadManuscriptTxt(input);
+}
+
+function hasLoadedManuscriptTxt() {
+    return Array.isArray(state.manuscriptTxtFiles)
+        && state.manuscriptTxtFiles.some(file => String(file && file.content ? file.content : '').trim() !== '');
+}
+
+function updatePromptGenerationButtonState() {
+    const hasTxt = hasLoadedManuscriptTxt();
+    const lockedTitle = 'TXTデータを読み込んでから使用できます';
+    const titles = {
+        promptGenFormattingBtn: '整形プロンプトをGeminiで開く',
+        promptGenSimpleBtn: '正誤チェックプロンプトをGeminiで開く',
+        promptGenVariationBtn: '提案チェックプロンプトをGeminiで開く'
+    };
+
+    Object.keys(titles).forEach(id => {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.disabled = !hasTxt;
+        btn.title = hasTxt ? titles[id] : lockedTitle;
+    });
+}
+
+function showTextLoadedNotification() {
+    const existing = document.getElementById('textLoadedToast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'textLoadedToast';
+    toast.className = 'proofreading-load-toast';
+    toast.textContent = 'テキストを読み込みました';
+    document.body.appendChild(toast);
+
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 220);
+    }, 2200);
 }
 
 // 常用外漢字検出結果を更新
@@ -486,12 +527,13 @@ function clearAllManuscriptTxt() {
 function updateTxtUploadStatus() {
     const statusEl = document.getElementById('txtUploadStatus');
     const manageBtn = document.getElementById('txtManageBtn');
+    updatePromptGenerationButtonState();
 
     if (state.manuscriptTxtFiles.length === 0) {
         statusEl.textContent = '';
         if (manageBtn) manageBtn.style.display = 'none';
     } else {
-        statusEl.textContent = '✓';
+        statusEl.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>';
         statusEl.style.color = '#27ae60';
         if (manageBtn) manageBtn.style.display = 'inline-block';
     }
@@ -527,7 +569,7 @@ function renderTxtFileList() {
         html += `
             <div class="txt-file-item">
                 <div class="txt-file-info">
-                    <span class="txt-file-icon">📄</span>
+                    <span class="txt-file-icon"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg></span></span>
                     <span class="txt-file-name">${escapeHtml(file.name)}</span>
                     <span class="txt-file-size">${sizeStr}</span>
                 </div>
@@ -550,10 +592,14 @@ function formatFileSize(bytes) {
 function onDataTypeChange() {
     const dataType = document.getElementById('dataTypeSelector').value;
     const txtUploadGroup = document.getElementById('txtUploadGroup');
+    const txtUploadBtn = document.getElementById('txtUploadBtn');
+    const usesTxt = (dataType === 'pdf_and_txt' || dataType === 'txt_only');
 
-    // PDFのみの場合はセリフTXT読込ボタンを非表示し、TXTデータをクリア
+    if (txtUploadGroup) txtUploadGroup.style.display = 'flex';
+    if (txtUploadBtn) txtUploadBtn.disabled = !usesTxt;
+
+    // PDFのみの場合はTXT読込ボタンをグレーアウトし、TXTデータをクリア
     if (dataType === 'pdf_only') {
-        if (txtUploadGroup) txtUploadGroup.style.display = 'none';
         hideTxtGuide();
 
         // TXTデータをクリア（プレビューに残らないようにする）
@@ -563,7 +609,6 @@ function onDataTypeChange() {
             updateTxtUploadStatus();
         }
     } else {
-        if (txtUploadGroup) txtUploadGroup.style.display = '';
         // TXTを使用するモードの場合、ガイドを表示
         if (state.manuscriptTxtFiles.length === 0 && !state.txtGuideDismissed) {
             showTxtGuide();
@@ -639,11 +684,13 @@ function selectDataType(value) {
         geminiBtn.removeAttribute('disabled');
     }
 
-    // TXTモード時のみセリフTXT読込ボタンを表示
+    // TXT読込ボタンは常に表示し、PDFのみの時はグレーアウト
     const txtUploadGroup = document.getElementById('txtUploadGroup');
+    const txtUploadBtn = document.getElementById('txtUploadBtn');
     if (txtUploadGroup) {
         const needsTxt = (value === 'pdf_and_txt' || value === 'txt_only');
-        txtUploadGroup.style.display = needsTxt ? 'flex' : 'none';
+        txtUploadGroup.style.display = 'flex';
+        if (txtUploadBtn) txtUploadBtn.disabled = !needsTxt;
     }
 }
 
@@ -794,7 +841,7 @@ function _isElementVisible(el) {
 }
 
 // ES Module exports
-export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
+export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });
+Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });

@@ -768,7 +768,7 @@ function goToResultViewerPage() {
     pasteTextByType = { variation: '', simple: '' };
     selectPasteType('simple');
 
-    document.getElementById('resultPasteArea').value = '';
+    clearResultPasteAreas();
     const modal = document.getElementById('resultPasteModal');
     modal.style.backdropFilter = 'none';
     modal.style.webkitBackdropFilter = 'none';
@@ -778,25 +778,55 @@ function goToResultViewerPage() {
 // 結果ビューアページを直接表示（モーダルなし）
 function showResultViewerPage() {
     const resultViewer = document.getElementById('resultViewerPage');
+    if (!resultViewer) {
+        showToast('結果ビューア画面が見つかりません', 'error');
+        return;
+    }
 
-    document.getElementById('landingScreen').style.display = 'none';
-    document.getElementById('mainWrapper').style.display = 'none';
-    document.getElementById('proofreadingPage').style.display = 'none';
-    document.getElementById('adminPage').style.display = 'none';
-    document.getElementById('comicPotEditorPage').style.display = 'none';
-    document.getElementById('specSheetPage').style.display = 'none';
+    if (resultViewer.style.display !== 'none' && getComputedStyle(resultViewer).display !== 'none') {
+        resultViewer.style.display = 'block';
+        return;
+    }
 
-    resultViewer.style.display = 'block';
-    resultViewer.classList.add('page-transition-zoom-in');
-    setTimeout(() => {
-        resultViewer.classList.remove('page-transition-zoom-in');
-    }, 350);
+    const pageIds = ['landingScreen', 'mainWrapper', 'proofreadingPage', 'comicPotEditorPage', 'specSheetPage'];
+    const sourcePages = pageIds
+        .map(id => document.getElementById(id))
+        .filter(el => el && el.style.display !== 'none' && getComputedStyle(el).display !== 'none');
+
+    const showViewer = () => {
+        pageIds.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+        });
+
+        resultViewer.style.display = 'block';
+        resultViewer.classList.add('cp-slide-in-right');
+        setTimeout(() => {
+            resultViewer.classList.remove('cp-slide-in-right');
+        }, 320);
+    };
+
+    if (sourcePages.length > 0) {
+        sourcePages.forEach(el => el.classList.add('cp-slide-out-left'));
+        setTimeout(() => {
+            sourcePages.forEach(el => {
+                el.style.display = 'none';
+                el.classList.remove('cp-slide-out-left');
+            });
+            showViewer();
+        }, 220);
+    } else {
+        showViewer();
+    }
 }
 
 // 結果ビューアからホームへ
-function goToHomeFromResultViewer() {
+async function goToHomeFromResultViewer() {
     const resultViewer = document.getElementById('resultViewerPage');
     const landing = document.getElementById('landingScreen');
+
+    if (!(await confirmHomeReset())) return;
+    resetProofreadingResultOnHome();
 
     resultViewer.classList.add('page-transition-out-down');
     setTimeout(() => {
@@ -815,31 +845,166 @@ function goToHomeFromResultViewer() {
 function goToProofreadingFromResultViewer() {
     const resultViewer = document.getElementById('resultViewerPage');
     const proofreading = document.getElementById('proofreadingPage');
+    const main = document.getElementById('mainWrapper');
 
-    resultViewer.classList.add('view-transition-out-right');
+    if (!proofreading) {
+        if (!resultViewer) return;
+        resultViewer.classList.add('cp-slide-out-left');
+        setTimeout(() => {
+            resultViewer.style.display = 'none';
+            resultViewer.classList.remove('cp-slide-out-left');
+            if (main) {
+                main.style.display = 'flex';
+                main.classList.add('cp-slide-in-right');
+                setTimeout(() => main.classList.remove('cp-slide-in-right'), 320);
+            }
+        }, 220);
+        return;
+    }
+
+    if (!resultViewer) return;
+
+    resultViewer.classList.add('cp-slide-out-left');
     setTimeout(() => {
         resultViewer.style.display = 'none';
-        resultViewer.classList.remove('view-transition-out-right');
+        resultViewer.classList.remove('cp-slide-out-left');
 
         proofreading.style.display = 'flex';
-        proofreading.classList.add('view-transition-in-right');
+        proofreading.classList.add('cp-slide-in-right');
         setTimeout(() => {
-            proofreading.classList.remove('view-transition-in-right');
-        }, 300);
-    }, 250);
+            proofreading.classList.remove('cp-slide-in-right');
+        }, 320);
+    }, 220);
 }
 
 // 貼り付けモーダル用：タブごとのテキスト保持
 let pasteTextByType = { variation: '', simple: '' };
+
+function getPasteTextarea(type) {
+    return document.getElementById(type === 'variation' ? 'resultPasteAreaVariation' : 'resultPasteAreaSimple');
+}
+
+function syncPasteTextByTypeFromFields() {
+    const legacy = document.getElementById('resultPasteArea');
+    const simpleArea = getPasteTextarea('simple');
+    const variationArea = getPasteTextarea('variation');
+
+    if (simpleArea) pasteTextByType.simple = simpleArea.value;
+    if (variationArea) pasteTextByType.variation = variationArea.value;
+
+    if (legacy && pasteTargetType) {
+        legacy.value = pasteTextByType[pasteTargetType] || '';
+    }
+}
+
+function syncPasteFieldsFromState() {
+    const simpleArea = getPasteTextarea('simple');
+    const variationArea = getPasteTextarea('variation');
+    const legacy = document.getElementById('resultPasteArea');
+
+    if (simpleArea) simpleArea.value = pasteTextByType.simple || '';
+    if (variationArea) variationArea.value = pasteTextByType.variation || '';
+    if (legacy) legacy.value = pasteTextByType[pasteTargetType || 'simple'] || '';
+}
+
+function clearResultPasteAreas() {
+    pasteTextByType = { variation: '', simple: '' };
+    syncPasteFieldsFromState();
+}
+
+let homeResetConfirmResolver = null;
+
+function confirmHomeReset() {
+    const modal = document.getElementById('homeResetConfirmModal');
+    if (!modal) {
+        return Promise.resolve(window.confirm('読み込みがリセットされます。よろしいですか？'));
+    }
+
+    modal.style.display = 'flex';
+    return new Promise(resolve => {
+        homeResetConfirmResolver = resolve;
+    });
+}
+
+function resolveHomeResetConfirm(confirmed) {
+    const modal = document.getElementById('homeResetConfirmModal');
+    if (modal) modal.style.display = 'none';
+
+    if (homeResetConfirmResolver) {
+        homeResetConfirmResolver(Boolean(confirmed));
+        homeResetConfirmResolver = null;
+    }
+}
+
+function resetProofreadingResultOnHome() {
+    clearResultPasteAreas();
+    pasteTargetType = null;
+    state.currentSimpleData = [];
+    state.currentVariationData = {};
+    resultPickedState.clear();
+    resultRowData.clear();
+
+    const modal = document.getElementById('resultPasteModal');
+    if (modal) modal.style.display = 'none';
+
+    const floatingTab = document.getElementById('resultPasteFloatingTab');
+    if (floatingTab) {
+        floatingTab.style.display = 'none';
+        floatingTab.classList.remove('is-tucked');
+    }
+
+    const resultDisplay = document.getElementById('resultDisplayArea');
+    if (resultDisplay) {
+        resultDisplay.innerHTML = '<p style="color:#999; text-align:center;">結果を貼り付けて「解析して表示」をクリックしてください</p>';
+    }
+
+    const simpleDisplay = document.getElementById('simpleDisplayArea');
+    if (simpleDisplay) {
+        simpleDisplay.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding:40px;">正誤チェックの結果を貼り付け</p>';
+    }
+
+    const variationDisplay = document.getElementById('variationDisplayArea');
+    if (variationDisplay) {
+        variationDisplay.innerHTML = '<p style="color:var(--text-dim); text-align:center; padding:40px;">提案チェックの結果を貼り付け</p>';
+    }
+
+    updateResultCount();
+    updateProofreadingResultButton();
+}
+
+function showResultPasteFloatingTab(type = 'simple') {
+    pasteTargetType = type;
+    const tab = document.getElementById('resultPasteFloatingTab');
+    if (tab) {
+        tab.style.display = 'block';
+        tab.classList.remove('is-tucked');
+    }
+}
+
+function hideResultPasteFloatingTab() {
+    const tab = document.getElementById('resultPasteFloatingTab');
+    if (tab) tab.classList.add('is-tucked');
+}
+
+function hasProofreadingResults() {
+    return state.currentSimpleData.length > 0 || Object.keys(state.currentVariationData).length > 0;
+}
+
+function updateProofreadingResultButton() {
+    const btn = document.getElementById('proofreadingResultBtn');
+    if (!btn) return;
+    btn.disabled = !hasProofreadingResults();
+}
 
 // 貼り付けタイプを選択
 function selectPasteType(type) {
     const textarea = document.getElementById('resultPasteArea');
 
     // 現在のタブの入力内容を保存
-    if (pasteTargetType) {
+    syncPasteTextByTypeFromFields();
+    if (textarea && pasteTargetType) {
         pasteTextByType[pasteTargetType] = textarea.value;
-    } else if (currentResultTab) {
+    } else if (textarea && currentResultTab) {
         pasteTextByType[currentResultTab] = textarea.value;
     }
 
@@ -847,21 +1012,25 @@ function selectPasteType(type) {
     currentResultTab = type;
 
     // 切り替え先タブの内容を復元
-    textarea.value = pasteTextByType[type] || '';
+    syncPasteFieldsFromState();
 
     // タブボタンの状態を更新
     document.querySelectorAll('.paste-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.type === type);
     });
+
+    const target = getPasteTextarea(type);
+    if (target) setTimeout(() => target.focus(), 0);
 }
 
 // 解析して結果ビューアに遷移
 function parseAndGoToViewer() {
     // 現在のタブの入力内容を保存
     const textarea = document.getElementById('resultPasteArea');
-    if (pasteTargetType) {
+    syncPasteTextByTypeFromFields();
+    if (textarea && pasteTargetType && textarea.value) {
         pasteTextByType[pasteTargetType] = textarea.value;
-    } else if (currentResultTab) {
+    } else if (textarea && currentResultTab && textarea.value) {
         pasteTextByType[currentResultTab] = textarea.value;
     }
 
@@ -898,6 +1067,7 @@ function parseAndGoToViewer() {
         showToast('解析できるデータがありません', 'warning');
         return;
     }
+    updateProofreadingResultButton();
 
     // モーダルを閉じる
     closeResultPasteModal();
@@ -937,12 +1107,11 @@ function parseAndGoToViewer() {
 function openResultPasteModal() {
     // タブ選択を表示
     const tabSelector = document.getElementById('pasteModalTabSelector');
-    if (tabSelector) tabSelector.style.display = 'flex';
+    if (tabSelector) tabSelector.style.display = 'none';
 
     const title = document.getElementById('resultPasteModalTitle');
     if (title) title.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></span> 結果を貼り付け';
 
-    document.getElementById('resultPasteArea').value = '';
     // 前回選択したタブを維持、初回は正誤チェック
     const defaultTab = pasteTargetType || 'simple';
     selectPasteType(defaultTab);
@@ -1190,7 +1359,7 @@ function renderSimpleCategoryOrderToElement(data, container, skipReset = false) 
         html += `<div class="result-category-card ${colorClass}">
             <div class="result-category-header">
                 <input type="checkbox" class="result-master-checkbox" onchange="toggleCategoryPicked(this)" onclick="event.stopPropagation()">
-                <span class="result-category-toggle" onclick="toggleResultCategory(this.parentElement)">▼</span>
+                <span class="result-category-toggle" onclick="toggleResultCategory(this.parentElement)"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span></span>
                 <span class="result-category-name" onclick="toggleResultCategory(this.parentElement)">${escapeHtml(category)}</span>
                 <span class="result-category-count" onclick="toggleResultCategory(this.parentElement)">(${items.length}件)</span>
             </div>
@@ -1212,7 +1381,7 @@ function renderSimpleCategoryOrderToElement(data, container, skipReset = false) 
 function openResultPasteModalFor(type) {
     // タブ選択UIを表示
     const tabSelector = document.getElementById('pasteModalTabSelector');
-    if (tabSelector) tabSelector.style.display = 'flex';
+    if (tabSelector) tabSelector.style.display = 'none';
 
     const title = document.getElementById('resultPasteModalTitle');
     if (title) title.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg></span> 結果を貼り付け';
@@ -1255,12 +1424,14 @@ function clearCurrentResult() {
     } else {
         state.currentSimpleData = [];
     }
+    updateProofreadingResultButton();
     showEmptyResultMessage();
 }
 
 // 提案チェック結果をクリア（並列表示用）
 function clearVariationResult() {
     state.currentVariationData = {};
+    updateProofreadingResultButton();
     const area = document.getElementById('variationDisplayArea');
     area.innerHTML = '<p style="color:#999; text-align:center; padding:40px;">提案チェックの結果を貼り付け</p>';
     updateCountDisplay('variationCountDisplay', 0);
@@ -1269,6 +1440,7 @@ function clearVariationResult() {
 // 正誤チェック結果をクリア（並列表示用）
 function clearSimpleResult() {
     state.currentSimpleData = [];
+    updateProofreadingResultButton();
     const area = document.getElementById('simpleDisplayArea');
     area.innerHTML = '<p style="color:#999; text-align:center; padding:40px;">正誤チェックの結果を貼り付け</p>';
     updateCountDisplay('simpleCountDisplay', 0);
@@ -1310,7 +1482,8 @@ function switchSimpleDisplayMode(mode) {
 
 // CSV解析して表示
 function parseAndDisplayResult() {
-    const text = document.getElementById('resultPasteArea').value.trim();
+    syncPasteTextByTypeFromFields();
+    const text = (pasteTextByType[pasteTargetType || currentResultTab] || '').trim();
     if (!text) {
         showToast('結果を貼り付けてください', 'warning');
         return;
@@ -1340,6 +1513,7 @@ function parseAndDisplayResult() {
             renderSimpleResultToElement(data, area);
             updateCountDisplay('simpleCountDisplay', data.length);
         }
+        updateProofreadingResultButton();
         pasteTargetType = null;
         return;
     }
@@ -1357,6 +1531,7 @@ function parseAndDisplayResult() {
         state.currentVariationData = grouped; // データを保持
         renderCategoryTables(grouped);
         updateResultCountSimple(data.length);
+        updateProofreadingResultButton();
     } else if (effectiveTab === 'simple') {
         // 正誤チェック: ページ,種別,セリフ,指摘内容
         const data = parseSimpleCSV(text);
@@ -1367,6 +1542,7 @@ function parseAndDisplayResult() {
         state.currentSimpleData = data;
         renderSimpleResult(data);
         updateResultCountSimple(data.length);
+        updateProofreadingResultButton();
     }
 }
 
@@ -1430,17 +1606,13 @@ function parseVariationCSV(text) {
     const lines = text.split('\n').filter(line => line.trim());
     const result = [];
 
-    // ヘッダー行をスキップ
-    let startIndex = 0;
-    if (lines[0] && (lines[0].includes('チェック項目') || lines[0].toLowerCase().includes('check'))) {
-        startIndex = 1;
-    }
-
-    for (let i = startIndex; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
 
-        const values = parseCSVLine(line);
+        const values = parseResultLine(line);
+        if (shouldSkipResultRow(values)) continue;
+
         if (values.length >= 4) {
             const pageText = values[1].trim();
             const { volumeNum, pageNum } = extractVolumeAndPage(pageText);
@@ -1463,35 +1635,82 @@ function parseVariationCSV(text) {
 function parseSimpleCSV(text) {
     const lines = text.split('\n').filter(line => line.trim());
     const result = [];
+    let columnMap = { page: 0, category: 1, excerpt: 2, content: 3 };
 
-    // ヘッダー行をスキップ
-    let startIndex = 0;
-    if (lines[0] && (lines[0].includes('ページ') || lines[0].toLowerCase().includes('page'))) {
-        startIndex = 1;
-    }
-
-    for (let i = startIndex; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
 
-        const values = parseCSVLine(line);
+        const values = parseResultLine(line);
+        if (isResultHeaderRow(values)) {
+            columnMap = getSimpleColumnMap(values);
+            continue;
+        }
+        if (shouldSkipResultRow(values)) continue;
+
         if (values.length >= 4) {
             // ページ番号・巻数を抽出（ソート用）
-            const pageText = values[0].trim();
+            const pageText = (values[columnMap.page] || '').trim();
             const { volumeNum, pageNum } = extractVolumeAndPage(pageText);
 
             result.push({
                 page: pageText,
                 volumeNum: volumeNum,
                 pageNum: pageNum,
-                category: values[1].trim(),
-                excerpt: values[2].trim(),
-                content: values[3].trim()
+                category: (values[columnMap.category] || '').trim(),
+                excerpt: (values[columnMap.excerpt] || '').trim(),
+                content: (values[columnMap.content] || '').trim()
             });
         }
     }
 
     return result;
+}
+
+function parseResultLine(line) {
+    const trimmed = line.trim();
+    if (trimmed.includes('|')) {
+        return trimmed
+            .replace(/^\|/, '')
+            .replace(/\|$/, '')
+            .split('|')
+            .map(v => v.trim())
+            .filter((v, index, arr) => v || index < arr.length - 1);
+    }
+    return parseCSVLine(trimmed);
+}
+
+function isMarkdownSeparatorRow(values) {
+    return values.length > 0 && values.every(v => /^:?-{2,}:?$/.test(v.trim()));
+}
+
+function isResultHeaderRow(values) {
+    const headerLikeCount = values.filter(v => {
+        const cell = v.trim().toLowerCase();
+        return /^(ページ|箇所|箇所\(ページ\)|page)$/.test(cell) ||
+            /^(カテゴリ|種別|チェック項目|category|check)$/.test(cell) ||
+            /^(セリフ|セリフ抜粋|抜粋|excerpt)$/.test(cell) ||
+            /^(指摘内容|内容|コメント|comment)$/.test(cell);
+    }).length;
+    return headerLikeCount >= 2;
+}
+
+function shouldSkipResultRow(values) {
+    return values.length < 4 || isMarkdownSeparatorRow(values) || isResultHeaderRow(values);
+}
+
+function findHeaderIndex(values, patterns, fallback) {
+    const index = values.findIndex(v => patterns.some(pattern => pattern.test(v)));
+    return index >= 0 ? index : fallback;
+}
+
+function getSimpleColumnMap(headerValues) {
+    return {
+        page: findHeaderIndex(headerValues, [/ページ/, /箇所/, /page/i], 0),
+        category: findHeaderIndex(headerValues, [/カテゴリ/, /種別/, /チェック項目/, /category/i], 1),
+        excerpt: findHeaderIndex(headerValues, [/セリフ/, /抜粋/, /excerpt/i], 2),
+        content: findHeaderIndex(headerValues, [/指摘/, /内容/, /comment/i], 3),
+    };
 }
 
 // CSV行をパース（引用符内のカンマを考慮）
@@ -1556,7 +1775,7 @@ function buildCategoryCardHtml(baseCategory, group) {
     <div class="result-category-card ${colorClass}">
         <div class="result-category-header">
             <input type="checkbox" class="result-master-checkbox" onchange="toggleCategoryPicked(this)" onclick="event.stopPropagation()">
-            <span class="result-category-toggle" onclick="toggleResultCategory(this.parentElement)">▼</span>
+            <span class="result-category-toggle" onclick="toggleResultCategory(this.parentElement)"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span></span>
             <span class="result-category-name" onclick="toggleResultCategory(this.parentElement)">${escapeHtml(baseCategory)}</span>
             <span class="result-category-count" onclick="toggleResultCategory(this.parentElement)">(${totalCount}件)</span>
         </div>
@@ -1643,10 +1862,10 @@ function toggleResultCategory(header) {
 
     if (body.style.display === 'none') {
         body.style.display = 'block';
-        toggle.textContent = '▼';
+        toggle.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>';
     } else {
         body.style.display = 'none';
-        toggle.textContent = '▶';
+        toggle.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>';
     }
 }
 
@@ -1876,7 +2095,7 @@ function renderSimpleCategoryOrderToContainer(data, container) {
         html += `
         <div class="result-category-card ${colorClass}">
             <div class="result-category-header" onclick="toggleResultCategory(this)">
-                <span class="result-category-toggle">▼</span>
+                <span class="result-category-toggle"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span></span>
                 <span class="result-category-name">${escapeHtml(category)}</span>
                 <span class="result-category-count">(${sortedItems.length}件)</span>
             </div>
@@ -1915,9 +2134,11 @@ function renderSimpleCategoryOrderToContainer(data, container) {
 
 // 結果ビューアをクリア
 function clearResultViewer() {
-    document.getElementById('resultPasteArea').value = '';
+    clearResultPasteAreas();
     document.getElementById('resultDisplayArea').innerHTML = '<p style="color:#999; text-align:center;">結果を貼り付けて「解析して表示」をクリックしてください</p>';
     state.currentSimpleData = [];
+    state.currentVariationData = {};
+    updateProofreadingResultButton();
 }
 
 // 正誤チェック結果の表示（ページ順/カテゴリ別切り替え対応）
@@ -2023,7 +2244,7 @@ function renderSimpleCategoryOrder(data) {
         <div class="result-category-card ${colorClass}">
             <div class="result-category-header">
                 <input type="checkbox" class="result-master-checkbox" onchange="toggleCategoryPicked(this)" onclick="event.stopPropagation()">
-                <span class="result-category-toggle" onclick="toggleResultCategory(this.parentElement)">▼</span>
+                <span class="result-category-toggle" onclick="toggleResultCategory(this.parentElement)"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span></span>
                 <span class="result-category-name" onclick="toggleResultCategory(this.parentElement)">${escapeHtml(category)}</span>
                 <span class="result-category-count" onclick="toggleResultCategory(this.parentElement)">(${count}件)</span>
             </div>
@@ -2092,7 +2313,15 @@ function getSimpleCategoryColor(category) {
 
 
 // ES Module exports
-export { makePickedKey, toggleResultPicked, toggleCategoryPicked, getCheckedAttr, getPickedResultData, extractCalibrationInfoFromPath, saveCalibrationData, openCalibrationFolderPickerForLoad, closeCalibrationFolderModal, loadCalibrationFolderContents, selectCalibrationFolder, closeCalibrationSaveModal, confirmCalibrationSave, showCalibrationSaveSuccessModal, closeCalibrationSaveSuccessModal, launchComicBridgeFromSave, launchMojiqFromSave, showCalibrationNewWorkForm, closeCalibrationNewWorkModal, registerCalibrationNewWork, startCalibrationNewWorkFromBrowser, performCalibrationFolderSearch, clearCalibrationFolderSearch, initCalibrationFolderBrowser, goToResultViewerPage, showResultViewerPage, goToHomeFromResultViewer, goToProofreadingFromResultViewer, selectPasteType, parseAndGoToViewer, openResultPasteModal, closeResultPasteModal, switchResultTab, setupSingleFilterForVariation, setupSingleFilterForSimple, setupParallelFilters, renderParallelView, countVariationItems, renderCategoryTablesToElement, renderSimpleResultToElement, renderSimplePageOrderToElement, renderSimpleCategoryOrderToElement, openResultPasteModalFor, showEmptyResultMessage, updateResultCountSimple, updateCountDisplay, clearCurrentResult, clearVariationResult, clearSimpleResult, switchSimpleDisplayMode, parseAndDisplayResult, extractVolumeAndPage, formatPageShort, compareByVolumeAndPage, parseVariationCSV, parseSimpleCSV, parseCSVLine, groupByCategory, buildCategoryCardHtml, renderCategoryTables, getCategoryColorClass, toggleResultCategory, populateCategoryFilter, applySingleCategoryFilter, applyVariationCategoryFilter, applySimpleCategoryFilter, renderCategoryTablesFiltered, renderSimpleResultFiltered, updateResultCount, renderSimplePageOrderToContainer, renderSimpleCategoryOrderToContainer, clearResultViewer, renderSimpleResult, renderSimplePageOrder, renderSimpleCategoryOrder, getCheckKind, getSimpleCategoryColor };
+export { makePickedKey, toggleResultPicked, toggleCategoryPicked, getCheckedAttr, getPickedResultData, extractCalibrationInfoFromPath, saveCalibrationData, openCalibrationFolderPickerForLoad, closeCalibrationFolderModal, loadCalibrationFolderContents, selectCalibrationFolder, closeCalibrationSaveModal, confirmCalibrationSave, showCalibrationSaveSuccessModal, closeCalibrationSaveSuccessModal, launchComicBridgeFromSave, launchMojiqFromSave, showCalibrationNewWorkForm, closeCalibrationNewWorkModal, registerCalibrationNewWork, startCalibrationNewWorkFromBrowser, performCalibrationFolderSearch, clearCalibrationFolderSearch, initCalibrationFolderBrowser, goToResultViewerPage, showResultViewerPage, goToHomeFromResultViewer, goToProofreadingFromResultViewer, selectPasteType, parseAndGoToViewer, openResultPasteModal, closeResultPasteModal, clearResultPasteAreas, confirmHomeReset, resolveHomeResetConfirm, resetProofreadingResultOnHome, showResultPasteFloatingTab, hideResultPasteFloatingTab, hasProofreadingResults, updateProofreadingResultButton, switchResultTab, setupSingleFilterForVariation, setupSingleFilterForSimple, setupParallelFilters, renderParallelView, countVariationItems, renderCategoryTablesToElement, renderSimpleResultToElement, renderSimplePageOrderToElement, renderSimpleCategoryOrderToElement, openResultPasteModalFor, showEmptyResultMessage, updateResultCountSimple, updateCountDisplay, clearCurrentResult, clearVariationResult, clearSimpleResult, switchSimpleDisplayMode, parseAndDisplayResult, extractVolumeAndPage, formatPageShort, compareByVolumeAndPage, parseVariationCSV, parseSimpleCSV, parseCSVLine, groupByCategory, buildCategoryCardHtml, renderCategoryTables, getCategoryColorClass, toggleResultCategory, populateCategoryFilter, applySingleCategoryFilter, applyVariationCategoryFilter, applySimpleCategoryFilter, renderCategoryTablesFiltered, renderSimpleResultFiltered, updateResultCount, renderSimplePageOrderToContainer, renderSimpleCategoryOrderToContainer, clearResultViewer, renderSimpleResult, renderSimplePageOrder, renderSimpleCategoryOrder, getCheckKind, getSimpleCategoryColor };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { labelToTxtFolderMapping, makePickedKey, toggleResultPicked, toggleCategoryPicked, getCheckedAttr, getPickedResultData, extractCalibrationInfoFromPath, saveCalibrationData, openCalibrationFolderPickerForLoad, closeCalibrationFolderModal, loadCalibrationFolderContents, selectCalibrationFolder, closeCalibrationSaveModal, confirmCalibrationSave, showCalibrationSaveSuccessModal, closeCalibrationSaveSuccessModal, launchComicBridgeFromSave, launchMojiqFromSave, showCalibrationNewWorkForm, closeCalibrationNewWorkModal, registerCalibrationNewWork, startCalibrationNewWorkFromBrowser, performCalibrationFolderSearch, clearCalibrationFolderSearch, initCalibrationFolderBrowser, goToResultViewerPage, showResultViewerPage, goToHomeFromResultViewer, goToProofreadingFromResultViewer, selectPasteType, parseAndGoToViewer, openResultPasteModal, closeResultPasteModal, switchResultTab, setupSingleFilterForVariation, setupSingleFilterForSimple, setupParallelFilters, renderParallelView, countVariationItems, renderCategoryTablesToElement, renderSimpleResultToElement, renderSimplePageOrderToElement, renderSimpleCategoryOrderToElement, openResultPasteModalFor, showEmptyResultMessage, updateResultCountSimple, updateResultCount, updateCountDisplay, clearCurrentResult, clearVariationResult, clearSimpleResult, switchSimpleDisplayMode, parseAndDisplayResult, extractVolumeAndPage, formatPageShort, compareByVolumeAndPage, parseVariationCSV, parseSimpleCSV, parseCSVLine, groupByCategory, buildCategoryCardHtml, renderCategoryTables, getCategoryColorClass, toggleResultCategory, populateCategoryFilter, applySingleCategoryFilter, applyVariationCategoryFilter, applySimpleCategoryFilter, renderCategoryTablesFiltered, renderSimpleResultFiltered, renderSimplePageOrderToContainer, renderSimpleCategoryOrderToContainer, clearResultViewer, renderSimpleResult, renderSimplePageOrder, renderSimpleCategoryOrder, getCheckKind, getSimpleCategoryColor });
+Object.assign(window, { labelToTxtFolderMapping, makePickedKey, toggleResultPicked, toggleCategoryPicked, getCheckedAttr, getPickedResultData, extractCalibrationInfoFromPath, saveCalibrationData, openCalibrationFolderPickerForLoad, closeCalibrationFolderModal, loadCalibrationFolderContents, selectCalibrationFolder, closeCalibrationSaveModal, confirmCalibrationSave, showCalibrationSaveSuccessModal, closeCalibrationSaveSuccessModal, launchComicBridgeFromSave, launchMojiqFromSave, showCalibrationNewWorkForm, closeCalibrationNewWorkModal, registerCalibrationNewWork, startCalibrationNewWorkFromBrowser, performCalibrationFolderSearch, clearCalibrationFolderSearch, initCalibrationFolderBrowser, goToResultViewerPage, showResultViewerPage, goToHomeFromResultViewer, goToProofreadingFromResultViewer, selectPasteType, parseAndGoToViewer, openResultPasteModal, closeResultPasteModal, clearResultPasteAreas, confirmHomeReset, resolveHomeResetConfirm, resetProofreadingResultOnHome, showResultPasteFloatingTab, hideResultPasteFloatingTab, hasProofreadingResults, updateProofreadingResultButton, switchResultTab, setupSingleFilterForVariation, setupSingleFilterForSimple, setupParallelFilters, renderParallelView, countVariationItems, renderCategoryTablesToElement, renderSimpleResultToElement, renderSimplePageOrderToElement, renderSimpleCategoryOrderToElement, openResultPasteModalFor, showEmptyResultMessage, updateResultCountSimple, updateResultCount, updateCountDisplay, clearCurrentResult, clearVariationResult, clearSimpleResult, switchSimpleDisplayMode, parseAndDisplayResult, extractVolumeAndPage, formatPageShort, compareByVolumeAndPage, parseVariationCSV, parseSimpleCSV, parseCSVLine, groupByCategory, buildCategoryCardHtml, renderCategoryTables, getCategoryColorClass, toggleResultCategory, populateCategoryFilter, applySingleCategoryFilter, applyVariationCategoryFilter, applySimpleCategoryFilter, renderCategoryTablesFiltered, renderSimpleResultFiltered, renderSimplePageOrderToContainer, renderSimpleCategoryOrderToContainer, clearResultViewer, renderSimpleResult, renderSimplePageOrder, renderSimpleCategoryOrder, getCheckKind, getSimpleCategoryColor });
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', updateProofreadingResultButton);
+    } else {
+        updateProofreadingResultButton();
+    }
+}
