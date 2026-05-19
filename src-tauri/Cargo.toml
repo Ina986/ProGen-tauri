@@ -1,6 +1,6 @@
 [package]
 name = "progen"
-version = "2.1.10"
+version = "2.1.11"
 description = "テキスト抽出・成形プロンプトジェネレータ"
 authors = []
 edition = "2021"
