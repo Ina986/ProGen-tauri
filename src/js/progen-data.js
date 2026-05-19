@@ -55,14 +55,21 @@ async function loadMasterRule(labelValue) {
     }
     try {
         const result = await window.electronAPI.readMasterRule(labelValue);
-        if (result.success && result.data && result.data.proofRules) {
-            state.currentProofRules = JSON.parse(JSON.stringify(result.data.proofRules.proof || []));
-            if (result.data.proofRules.symbol && result.data.proofRules.symbol.length > 0) {
-                state.symbolRules = JSON.parse(JSON.stringify(result.data.proofRules.symbol));
+        const proofRules = result.success && result.data
+            ? (result.data.proofRules || result.data)
+            : null;
+        if (proofRules) {
+            state.currentProofRules = JSON.parse(JSON.stringify(proofRules.proof || [])).map(rule => ({
+                ...rule,
+                src: rule.src ?? rule.before ?? '',
+                dst: rule.dst ?? rule.after ?? ''
+            }));
+            if (proofRules.symbol && proofRules.symbol.length > 0) {
+                state.symbolRules = JSON.parse(JSON.stringify(proofRules.symbol));
             }
             // マスターJSONからオプション設定（数字ルール等）を読み込み
-            if (result.data.proofRules.options) {
-                const opts = result.data.proofRules.options;
+            if (proofRules.options) {
+                const opts = proofRules.options;
                 if (opts.numberRuleBase !== undefined) state.numberRuleBase = opts.numberRuleBase;
                 if (opts.numberRulePersonCount !== undefined) state.numberRulePersonCount = opts.numberRulePersonCount;
                 if (opts.numberRuleThingCount !== undefined) state.numberRuleThingCount = opts.numberRuleThingCount;
@@ -308,6 +315,11 @@ function loadManuscriptTxt(input) {
                 }
 
                 showTextLoadedNotification();
+
+                const detectedLines = detectNonJoyoLinesWithPageInfo(state.manuscriptTxtFiles);
+                state.proofreadingFiles = [...state.manuscriptTxtFiles];
+                state.proofreadingDetectedNonJoyoWords = detectedLines;
+                showNonJoyoResultPopup(detectedLines, true);
             }
         };
         reader.readAsText(file, 'UTF-8');
@@ -387,36 +399,54 @@ function showNonJoyoResultPopup(detectedLines, forceShow = false) {
 
     let html;
     if (!detectedLines || detectedLines.length === 0) {
-        html = '<p style="color:#888; text-align:center; padding:20px;">常用外漢字は検出されませんでした。</p>';
+        html = `
+            <div class="non-joyo-empty">
+                <div class="non-joyo-empty-icon">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                </div>
+                <p>常用外漢字は検出されませんでした。</p>
+            </div>`;
     } else {
-        html = '<p style="margin-bottom:8px;">プロンプトに含める項目にチェックを入れてください：</p>';
-        html += '<div style="margin-bottom:8px; display:flex; gap:8px;">';
-        html += '<button class="btn btn-small btn-gray" onclick="toggleAllNonJoyoCheckboxes(true)" style="padding:4px 10px; font-size:0.85em;">全選択</button>';
-        html += '<button class="btn btn-small btn-gray" onclick="toggleAllNonJoyoCheckboxes(false)" style="padding:4px 10px; font-size:0.85em;">全解除</button>';
-        html += '</div>';
-        html += '<div style="max-height:350px; overflow-y:auto;">';
-        html += '<table style="width:100%; border-collapse:collapse; font-size:0.9em;">';
-        html += '<tr style="background:var(--surface-dim);">';
-        html += '<th style="padding:8px; border:1px solid #ddd; width:40px;"><input type="checkbox" id="nonJoyoSelectAll" checked onchange="toggleAllNonJoyoCheckboxes(this.checked)"></th>';
-        html += '<th style="padding:8px; border:1px solid #ddd; width:90px;">該当箇所</th>';
-        html += '<th style="padding:8px; border:1px solid #ddd;">該当行</th>';
-        html += '<th style="padding:8px; border:1px solid #ddd; width:80px;">常用外</th>';
-        html += '</tr>';
+        html = `
+            <div class="non-joyo-summary">
+                <div>
+                    <div class="non-joyo-summary-title">${detectedLines.length}件の候補を検出しました</div>
+                    <div class="non-joyo-summary-note">チェックした項目だけを正誤チェックプロンプトへ渡します。</div>
+                </div>
+                <div class="non-joyo-actions">
+                    <button class="btn btn-small btn-gray" onclick="toggleAllNonJoyoCheckboxes(true)">全選択</button>
+                    <button class="btn btn-small btn-gray" onclick="toggleAllNonJoyoCheckboxes(false)">全解除</button>
+                </div>
+            </div>
+            <div class="non-joyo-table-wrap">
+                <table class="non-joyo-table">
+                    <thead>
+                        <tr>
+                            <th class="non-joyo-check"><input type="checkbox" id="nonJoyoSelectAll" checked onchange="toggleAllNonJoyoCheckboxes(this.checked)"></th>
+                            <th class="non-joyo-page">該当箇所</th>
+                            <th>該当行</th>
+                            <th class="non-joyo-chars">常用外</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
         detectedLines.forEach((item, index) => {
-            // 該当行をハイライト（常用外漢字を赤色に）
             let highlightedLine = escapeHtml(item.line);
             item.nonJoyoChars.forEach(char => {
-                highlightedLine = highlightedLine.replace(new RegExp(char, 'g'), `<span style="color:#e74c3c; font-weight:bold;">${char}</span>`);
+                highlightedLine = highlightedLine.replace(new RegExp(char, 'g'), `<span class="non-joyo-highlight">${char}</span>`);
             });
-            html += `<tr>`;
-            html += `<td style="padding:8px; border:1px solid #ddd; text-align:center;"><input type="checkbox" class="nonJoyoItemCheckbox" data-index="${index}" checked onchange="updateNonJoyoSelection(${index}, this.checked)"></td>`;
-            html += `<td style="padding:8px; border:1px solid #ddd; text-align:center; font-weight:bold;">${escapeHtml(item.page)}</td>`;
-            html += `<td style="padding:8px; border:1px solid #ddd;">${highlightedLine}</td>`;
-            html += `<td style="padding:8px; border:1px solid #ddd; color:#e74c3c; font-weight:bold; text-align:center;">${item.nonJoyoChars.join(', ')}</td>`;
-            html += `</tr>`;
+            html += `
+                        <tr>
+                            <td class="non-joyo-check"><input type="checkbox" class="nonJoyoItemCheckbox" data-index="${index}" checked onchange="updateNonJoyoSelection(${index}, this.checked)"></td>
+                            <td class="non-joyo-page">${escapeHtml(item.page)}</td>
+                            <td class="non-joyo-line">${highlightedLine}</td>
+                            <td class="non-joyo-chars">${item.nonJoyoChars.map(char => `<span>${escapeHtml(char)}</span>`).join('')}</td>
+                        </tr>`;
         });
-        html += '</table></div>';
-        html += `<p style="margin-top:12px; color:#666; font-size:0.9em;">計 ${detectedLines.length} 行（<span id="nonJoyoSelectedCount">${detectedLines.length}</span> 件選択中）</p>`;
+        html += `
+                    </tbody>
+                </table>
+            </div>
+            <p class="non-joyo-count">計 ${detectedLines.length} 行（<span id="nonJoyoSelectedCount">${detectedLines.length}</span> 件選択中）</p>`;
     }
 
     body.innerHTML = html;

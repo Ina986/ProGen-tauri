@@ -63,6 +63,186 @@
     --navy: #1a1a2e;
 }
 
+/* Non-Joyo kanji result modal */
+.non-joyo-modal .modal-header {
+    background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+}
+
+.non-joyo-modal .modal-header > span:first-child {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-blue);
+}
+
+.non-joyo-modal .modal-body {
+    padding: 20px 24px 18px;
+}
+
+.non-joyo-modal .modal-footer {
+    justify-content: flex-end;
+}
+
+.non-joyo-modal-content {
+    width: min(760px, 92vw);
+}
+
+.non-joyo-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: var(--ink-blue-light);
+    border: 1px solid rgba(59, 89, 152, 0.16);
+    border-radius: var(--radius-md);
+}
+
+.non-joyo-summary-title {
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.4;
+}
+
+.non-joyo-summary-note {
+    margin-top: 2px;
+    font-size: 0.86em;
+    color: var(--text-dim);
+}
+
+.non-joyo-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.non-joyo-actions .btn {
+    padding: 5px 11px;
+    font-size: 0.84em;
+}
+
+.non-joyo-table-wrap {
+    max-height: 360px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.non-joyo-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.9em;
+}
+
+.non-joyo-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 9px 10px;
+    background: var(--surface-dim);
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    font-size: 0.82em;
+    font-weight: 700;
+    text-align: left;
+}
+
+.non-joyo-table td {
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+.non-joyo-table tr:last-child td {
+    border-bottom: none;
+}
+
+.non-joyo-table tr:hover td {
+    background: #fbfcff;
+}
+
+.non-joyo-check {
+    width: 42px;
+    text-align: center !important;
+}
+
+.non-joyo-page {
+    width: 96px;
+    color: var(--ink-blue);
+    font-weight: 700;
+    text-align: center !important;
+    white-space: nowrap;
+}
+
+.non-joyo-line {
+    color: var(--text);
+    line-height: 1.7;
+    word-break: break-word;
+}
+
+.non-joyo-highlight {
+    color: var(--error);
+    font-weight: 700;
+    background: var(--warm-red-light);
+    border-radius: 4px;
+    padding: 0 2px;
+}
+
+.non-joyo-chars {
+    width: 96px;
+    text-align: center !important;
+}
+
+.non-joyo-chars span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    height: 24px;
+    margin: 1px;
+    padding: 0 5px;
+    color: var(--error);
+    background: var(--warm-red-light);
+    border: 1px solid rgba(185, 28, 28, 0.16);
+    border-radius: 6px;
+    font-weight: 700;
+}
+
+.non-joyo-count {
+    margin: 12px 0 0;
+    color: var(--text-dim);
+    font-size: 0.88em;
+}
+
+.non-joyo-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 28px 16px;
+    color: var(--text-dim);
+    text-align: center;
+}
+
+.non-joyo-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    color: var(--success);
+    background: var(--sage-light);
+    border-radius: 50%;
+}
+
+.non-joyo-empty p {
+    margin: 0;
+}
+
 html, body {
     height: 100%;
     overflow: hidden; /* ウインドウ全体のスクロールを抑止し、内側コンテナ側でスクロール */
