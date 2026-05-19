@@ -51,6 +51,7 @@ export const state = {
     proofreadingContent: '',
     currentProofreadingMode: 'simple',
     proofreadingDetectedNonJoyoWords: [],
+    proofreadingDetectedMojibakeLines: [],
     proofreadingSelectedNonJoyoIndexes: [],
     proofreadingReturnTo: 'landing',
 

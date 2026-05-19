@@ -282,6 +282,107 @@ function detectNonJoyoLinesWithPageInfo(files) {
     return results;
 }
 
+const MOJIBAKE_SUSPECT_CHARS = ['□', '☒', '�', '〓'];
+
+function collectPageAwareLines(files, onLine) {
+    if (!Array.isArray(files)) return;
+
+    const pageMarkerRegex = /^<<(\d+)Page>>$/;
+    const volumeMarkerRegex = /^\[(\d+)巻\]$/;
+
+    files.forEach(file => {
+        const content = file.content || '';
+        const lines = content.split(/\r?\n/);
+        const hasHyphenDelimiter = content.includes('----------');
+        const hasPageMarker = /<<\d+Page>>/.test(content);
+        const hasVolumeMarker = /\[\d+巻\]/.test(content);
+
+        if (hasHyphenDelimiter || hasPageMarker || hasVolumeMarker) {
+            let currentPage = 1;
+            let currentVolume = null;
+            let isFirstLine = true;
+            let i = 0;
+
+            if (!hasPageMarker && !hasVolumeMarker) {
+                while (i < lines.length && lines[i].trim() === '----------') {
+                    if (!isFirstLine) currentPage++;
+                    isFirstLine = false;
+                    i++;
+                }
+                if (i > 0) isFirstLine = false;
+            }
+
+            for (; i < lines.length; i++) {
+                const line = lines[i];
+                const trimmedLine = line.trim();
+
+                const volumeMarkerMatch = trimmedLine.match(volumeMarkerRegex);
+                if (volumeMarkerMatch) {
+                    currentVolume = parseInt(volumeMarkerMatch[1], 10);
+                    if (!hasPageMarker) currentPage = 1;
+                    continue;
+                }
+
+                const pageMarkerMatch = trimmedLine.match(pageMarkerRegex);
+                if (pageMarkerMatch) {
+                    currentPage = parseInt(pageMarkerMatch[1], 10);
+                    continue;
+                }
+
+                if (trimmedLine === '----------') {
+                    if (!hasPageMarker) currentPage++;
+                    continue;
+                }
+
+                if (!trimmedLine) continue;
+
+                const pageDisplay = currentVolume !== null
+                    ? `${currentVolume}巻 ${currentPage}P`
+                    : String(currentPage);
+                onLine({
+                    page: pageDisplay,
+                    volume: currentVolume,
+                    pageNum: currentPage,
+                    line: trimmedLine,
+                    file
+                });
+            }
+        } else {
+            const pageMatch = (file.name || '').match(/(\d+)/);
+            const page = pageMatch ? pageMatch[1] : (file.name || '').replace(/\.txt$/i, '');
+
+            lines.forEach(line => {
+                const trimmedLine = line.trim();
+                if (!trimmedLine) return;
+                onLine({
+                    page,
+                    line: trimmedLine,
+                    file
+                });
+            });
+        }
+    });
+}
+
+function detectMojibakeLinesWithPageInfo(files) {
+    const results = [];
+
+    collectPageAwareLines(files, item => {
+        const chars = MOJIBAKE_SUSPECT_CHARS.filter(char => item.line.includes(char));
+        if (chars.length === 0) return;
+
+        results.push({
+            page: item.page,
+            volume: item.volume,
+            pageNum: item.pageNum,
+            line: item.line,
+            suspectChars: chars
+        });
+    });
+
+    return results;
+}
+
 // 検出された常用外漢字を含む単語（TXT読み込み時に更新）
 // [moved to state] detectedNonJoyoWords
 // [moved to state] manuscriptTxtFiles
@@ -386,7 +487,7 @@ function updateNonJoyoDetection() {
 
 // 常用外漢字検出結果ポップアップを表示
 // forceShow: trueの場合はチェックボックスの状態に関係なく表示
-function showNonJoyoResultPopup(detectedLines, forceShow = false) {
+function showNonJoyoResultPopup(detectedLines, forceShow = false, mojibakeLines = null) {
     if (!forceShow && !state.optionNonJoyoCheck) return;
 
     const modal = document.getElementById('nonJoyoResultModal');
@@ -394,12 +495,21 @@ function showNonJoyoResultPopup(detectedLines, forceShow = false) {
 
     if (!modal || !body) return;
 
+    const detectedMojibakeLines = Array.isArray(mojibakeLines)
+        ? mojibakeLines
+        : detectMojibakeLinesWithPageInfo(state.proofreadingFiles || []);
+    state.proofreadingDetectedMojibakeLines = detectedMojibakeLines;
+
     // 選択状態を初期化（全て選択状態）
     state.proofreadingSelectedNonJoyoIndexes = detectedLines ? detectedLines.map((_, i) => i) : [];
 
-    let html;
-    if (!detectedLines || detectedLines.length === 0) {
-        html = `
+    const nonJoyoCount = detectedLines ? detectedLines.length : 0;
+    const mojibakeCount = detectedMojibakeLines.length;
+    const activeTab = nonJoyoCount > 0 ? 'nonJoyo' : 'mojibake';
+
+    let nonJoyoHtml;
+    if (!detectedLines || nonJoyoCount === 0) {
+        nonJoyoHtml = `
             <div class="non-joyo-empty">
                 <div class="non-joyo-empty-icon">
                     <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
@@ -407,7 +517,7 @@ function showNonJoyoResultPopup(detectedLines, forceShow = false) {
                 <p>常用外漢字は検出されませんでした。</p>
             </div>`;
     } else {
-        html = `
+        nonJoyoHtml = `
             <div class="non-joyo-summary">
                 <div>
                     <div class="non-joyo-summary-title">${detectedLines.length}件の候補を検出しました</div>
@@ -449,8 +559,72 @@ function showNonJoyoResultPopup(detectedLines, forceShow = false) {
             <p class="non-joyo-count">計 ${detectedLines.length} 行（<span id="nonJoyoSelectedCount">${detectedLines.length}</span> 件選択中）</p>`;
     }
 
+    let mojibakeHtml;
+    if (mojibakeCount === 0) {
+        mojibakeHtml = `
+            <div class="non-joyo-empty">
+                <div class="non-joyo-empty-icon">
+                    <span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                </div>
+                <p>文字化け候補は検出されませんでした。</p>
+            </div>`;
+    } else {
+        mojibakeHtml = `
+            <div class="non-joyo-summary mojibake-summary">
+                <div>
+                    <div class="non-joyo-summary-title">${mojibakeCount}件の文字化け候補を検出しました</div>
+                    <div class="non-joyo-summary-note">□ / ☒ / � / 〓 などが文中にある行です。必要に応じて元データを確認してください。</div>
+                </div>
+            </div>
+            <div class="non-joyo-table-wrap">
+                <table class="non-joyo-table">
+                    <thead>
+                        <tr>
+                            <th class="non-joyo-page">該当箇所</th>
+                            <th>セリフ</th>
+                            <th class="non-joyo-chars">候補</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+        detectedMojibakeLines.forEach(item => {
+            let highlightedLine = escapeHtml(item.line);
+            item.suspectChars.forEach(char => {
+                const escapedChar = escapeHtml(char);
+                highlightedLine = highlightedLine.split(escapedChar).join(`<span class="mojibake-highlight">${escapedChar}</span>`);
+            });
+            mojibakeHtml += `
+                        <tr>
+                            <td class="non-joyo-page">${escapeHtml(item.page)}</td>
+                            <td class="non-joyo-line">${highlightedLine}</td>
+                            <td class="non-joyo-chars">${item.suspectChars.map(char => `<span>${escapeHtml(char)}</span>`).join('')}</td>
+                        </tr>`;
+        });
+        mojibakeHtml += `
+                    </tbody>
+                </table>
+            </div>
+            <p class="non-joyo-count">計 ${mojibakeCount} 行</p>`;
+    }
+
+    const html = `
+        <div class="non-joyo-tabs" role="tablist">
+            <button type="button" class="non-joyo-tab ${activeTab === 'nonJoyo' ? 'active' : ''}" data-non-joyo-tab="nonJoyo" onclick="switchNonJoyoResultTab('nonJoyo')">常用外漢字 <span>${nonJoyoCount}</span></button>
+            <button type="button" class="non-joyo-tab ${activeTab === 'mojibake' ? 'active' : ''}" data-non-joyo-tab="mojibake" onclick="switchNonJoyoResultTab('mojibake')">文字化け候補 <span>${mojibakeCount}</span></button>
+        </div>
+        <div class="non-joyo-tab-panel" data-non-joyo-tab-panel="nonJoyo" style="${activeTab === 'nonJoyo' ? '' : 'display:none;'}">${nonJoyoHtml}</div>
+        <div class="non-joyo-tab-panel" data-non-joyo-tab-panel="mojibake" style="${activeTab === 'mojibake' ? '' : 'display:none;'}">${mojibakeHtml}</div>`;
+
     body.innerHTML = html;
     modal.style.display = 'flex';
+}
+
+function switchNonJoyoResultTab(tab) {
+    document.querySelectorAll('.non-joyo-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.nonJoyoTab === tab);
+    });
+    document.querySelectorAll('[data-non-joyo-tab-panel]').forEach(panel => {
+        panel.style.display = panel.dataset.nonJoyoTabPanel === tab ? '' : 'none';
+    });
 }
 
 // 常用外漢字の選択状態を更新
@@ -871,7 +1045,7 @@ function _isElementVisible(el) {
 }
 
 // ES Module exports
-export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
+export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, detectMojibakeLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, switchNonJoyoResultTab, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });
+Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, detectMojibakeLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, switchNonJoyoResultTab, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });

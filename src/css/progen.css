@@ -87,6 +87,48 @@
     width: min(760px, 92vw);
 }
 
+.non-joyo-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    padding: 4px;
+    background: var(--surface-dim);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.non-joyo-tab {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    min-height: 34px;
+    padding: 6px 12px;
+    color: var(--text-secondary);
+    background: transparent;
+    border: 0;
+    border-radius: 6px;
+    font-size: 0.9em;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.non-joyo-tab.active {
+    color: var(--ink-blue);
+    background: var(--surface);
+    box-shadow: var(--shadow-soft);
+}
+
+.non-joyo-tab span {
+    min-width: 22px;
+    padding: 1px 7px;
+    color: var(--text-dim);
+    background: var(--surface-dim);
+    border-radius: 999px;
+    font-size: 0.82em;
+}
+
 .non-joyo-summary {
     display: flex;
     align-items: center;
@@ -190,6 +232,15 @@
     background: var(--warm-red-light);
     border-radius: 4px;
     padding: 0 2px;
+}
+
+.mojibake-highlight {
+    color: var(--error);
+    font-weight: 800;
+    background: #fff1f2;
+    border: 1px solid rgba(185, 28, 28, 0.18);
+    border-radius: 4px;
+    padding: 0 3px;
 }
 
 .non-joyo-chars {
