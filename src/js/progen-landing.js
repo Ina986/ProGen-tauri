@@ -283,6 +283,9 @@ async function goToHome() {
     if (typeof window.resetProofreadingResultOnHome === 'function') {
         window.resetProofreadingResultOnHome();
     }
+    if (typeof window.clearProofRulesSavedState === 'function') {
+        window.clearProofRulesSavedState();
+    }
 
     // ランディング画面のレーベル選択をリセット
     resetLandingLabelSelector();

@@ -47,6 +47,97 @@ const numberSubRules = {
 };
 
 // マスタールールをGドライブの外部JSONから読み込む
+function normalizeRuleSnapshotValue(value) {
+    if (Array.isArray(value)) {
+        return value.map(normalizeRuleSnapshotValue);
+    }
+    if (value && typeof value === 'object') {
+        return Object.keys(value).sort().reduce((acc, key) => {
+            acc[key] = normalizeRuleSnapshotValue(value[key]);
+            return acc;
+        }, {});
+    }
+    return value;
+}
+
+function getCurrentProofRulesSnapshot() {
+    return JSON.stringify(normalizeRuleSnapshotValue({
+        proof: state.currentProofRules || [],
+        symbol: state.symbolRules || [],
+        options: {
+            ngWordMasking: state.optionNgWordMasking,
+            punctuationToSpace: state.optionPunctuationToSpace,
+            difficultRuby: state.optionDifficultRuby,
+            typoCheck: state.optionTypoCheck,
+            missingCharCheck: state.optionMissingCharCheck,
+            nameRubyCheck: state.optionNameRubyCheck,
+            nonJoyoCheck: state.optionNonJoyoCheck,
+            numberRuleBase: state.numberRuleBase,
+            numberRulePersonCount: state.numberRulePersonCount,
+            numberRuleThingCount: state.numberRuleThingCount,
+            numberRuleMonth: state.numberRuleMonth,
+            numberSubRulesEnabled: state.numberSubRulesEnabled
+        }
+    }));
+}
+
+function markProofRulesSaved() {
+    state.proofRulesBaseline = getCurrentProofRulesSnapshot();
+    state.proofRulesTrackingEnabled = true;
+}
+
+function clearProofRulesSavedState() {
+    state.proofRulesBaseline = '';
+    state.proofRulesTrackingEnabled = false;
+}
+
+function hasUnsavedProofRules() {
+    return Boolean(
+        state.proofRulesTrackingEnabled &&
+        state.proofRulesBaseline &&
+        getCurrentProofRulesSnapshot() !== state.proofRulesBaseline
+    );
+}
+
+let unsavedProofRulesConfirmResolver = null;
+
+function confirmUnsavedProofRulesIfNeeded(context = 'home') {
+    if (!hasUnsavedProofRules()) {
+        return Promise.resolve(true);
+    }
+
+    const modal = document.getElementById('unsavedProofRulesConfirmModal');
+    if (!modal) {
+        return Promise.resolve(window.confirm('表記ルールの変更が保存されていません。保存せずに続行しますか？'));
+    }
+
+    const message = document.getElementById('unsavedProofRulesConfirmMessage');
+    const confirmBtn = document.getElementById('unsavedProofRulesConfirmProceedBtn');
+    if (message) {
+        message.textContent = context === 'exit'
+            ? '表記ルールの変更が保存されていません。保存せずにアプリを終了しますか？'
+            : '表記ルールの変更が保存されていません。保存せずにホーム画面へ戻りますか？';
+    }
+    if (confirmBtn) {
+        confirmBtn.textContent = context === 'exit' ? '保存せず終了' : '保存せず戻る';
+    }
+
+    modal.style.display = 'flex';
+    return new Promise(resolve => {
+        unsavedProofRulesConfirmResolver = resolve;
+    });
+}
+
+function resolveUnsavedProofRulesConfirm(confirmed) {
+    const modal = document.getElementById('unsavedProofRulesConfirmModal');
+    if (modal) modal.style.display = 'none';
+
+    if (unsavedProofRulesConfirmResolver) {
+        unsavedProofRulesConfirmResolver(Boolean(confirmed));
+        unsavedProofRulesConfirmResolver = null;
+    }
+}
+
 async function loadMasterRule(labelValue) {
     if (!window.electronAPI || !window.electronAPI.isElectron) {
         console.warn('Electron環境外のため、マスタールールを読み込めません');
@@ -84,6 +175,7 @@ async function loadMasterRule(labelValue) {
         console.error('マスタールール読み込みエラー:', e);
         state.currentProofRules = [];
     }
+    markProofRulesSaved();
 }
 
 // defaultSymbolRules は progen-state.js からインポート済み
@@ -544,7 +636,7 @@ function showNonJoyoResultPopup(detectedLines, forceShow = false, mojibakeLines 
             item.nonJoyoChars.forEach(char => {
                 highlightedLine = highlightedLine.replace(new RegExp(char, 'g'), `<span class="non-joyo-highlight">${char}</span>`);
             });
-            html += `
+            nonJoyoHtml += `
                         <tr>
                             <td class="non-joyo-check"><input type="checkbox" class="nonJoyoItemCheckbox" data-index="${index}" checked onchange="updateNonJoyoSelection(${index}, this.checked)"></td>
                             <td class="non-joyo-page">${escapeHtml(item.page)}</td>
@@ -552,7 +644,7 @@ function showNonJoyoResultPopup(detectedLines, forceShow = false, mojibakeLines 
                             <td class="non-joyo-chars">${item.nonJoyoChars.map(char => `<span>${escapeHtml(char)}</span>`).join('')}</td>
                         </tr>`;
         });
-        html += `
+        nonJoyoHtml += `
                     </tbody>
                 </table>
             </div>
@@ -1045,7 +1137,7 @@ function _isElementVisible(el) {
 }
 
 // ES Module exports
-export { loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, detectMojibakeLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, switchNonJoyoResultTab, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
+export { loadMasterRule, getCurrentProofRulesSnapshot, markProofRulesSaved, clearProofRulesSavedState, hasUnsavedProofRules, confirmUnsavedProofRulesIfNeeded, resolveUnsavedProofRulesConfirm, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, detectMojibakeLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, switchNonJoyoResultTab, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, detectMojibakeLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, switchNonJoyoResultTab, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });
+Object.assign(window, { categories, numberSubRules, numberBaseOptions, loadMasterRule, getCurrentProofRulesSnapshot, markProofRulesSaved, clearProofRulesSavedState, hasUnsavedProofRules, confirmUnsavedProofRulesIfNeeded, resolveUnsavedProofRulesConfirm, detectNonJoyoWords, detectNonJoyoLinesWithPageInfo, detectMojibakeLinesWithPageInfo, loadManuscriptTxt, addManuscriptTxt, hasLoadedManuscriptTxt, updatePromptGenerationButtonState, updateNonJoyoDetection, showNonJoyoResultPopup, switchNonJoyoResultTab, updateNonJoyoSelection, toggleAllNonJoyoCheckboxes, updateNonJoyoSelectAllCheckbox, getSelectedNonJoyoLines, closeNonJoyoResultModal, confirmNonJoyoSelection, cancelNonJoyoSelection, removeManuscriptTxt, clearAllManuscriptTxt, updateTxtUploadStatus, openTxtManageModal, closeTxtManageModal, renderTxtFileList, formatFileSize, onDataTypeChange, toggleDataTypeDropdown, selectDataType, enableDataTypeToggle, disableDataTypeToggle, onOutputFormatVolumeChange, onOutputFormatStartPageChange, onOutputFormatSortModeChange, unlockExtractionGeminiButton, showExtractionGeminiPopup, closeExtractionGeminiPopup, showTxtGuide, hideTxtGuide, dismissTxtGuide, setupDropZone });

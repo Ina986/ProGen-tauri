@@ -801,6 +801,7 @@ async function createNewWorkJson() {
                 missingCharCheck: state.optionMissingCharCheck,
                 nameRubyCheck: state.optionNameRubyCheck,
                 nonJoyoCheck: state.optionNonJoyoCheck,
+                numberRuleBase: state.numberRuleBase,
                 numberRulePersonCount: state.numberRulePersonCount,
                 numberRuleThingCount: state.numberRuleThingCount,
                 numberRuleMonth: state.numberRuleMonth,
@@ -860,6 +861,9 @@ async function createNewWorkJson() {
         // グローバル状態を更新
         state.currentJsonPath = fullPath;
         state.currentLoadedJson = newWorkJson;
+        if (typeof window.markProofRulesSaved === 'function') {
+            window.markProofRulesSaved();
+        }
 
         // ヘッダーにファイル名を表示
         const jsonIndicator = document.getElementById('loadedJsonIndicator');
@@ -1130,6 +1134,10 @@ async function processLoadedJson(data, fileName) {
         geminiBtn.removeAttribute('disabled');
     }
 
+    if (typeof window.markProofRulesSaved === 'function') {
+        window.markProofRulesSaved();
+    }
+
     return { fallbackLabel };
 }
 
@@ -1171,7 +1179,8 @@ async function saveProofRulesToJson() {
                     numberRuleBase: state.numberRuleBase,
                     numberRulePersonCount: state.numberRulePersonCount,
                     numberRuleThingCount: state.numberRuleThingCount,
-                    numberRuleMonth: state.numberRuleMonth
+                    numberRuleMonth: state.numberRuleMonth,
+                    numberSubRulesEnabled: state.numberSubRulesEnabled
                 }
             },
             presetData: state.currentLoadedJson.presetData || {}
@@ -1186,6 +1195,9 @@ async function saveProofRulesToJson() {
 
         // グローバル状態を更新
         state.currentLoadedJson = updatedJson;
+        if (typeof window.markProofRulesSaved === 'function') {
+            window.markProofRulesSaved();
+        }
 
         showToast('表記ルールをJSONに保存しました', 'success');
     } catch (error) {
@@ -1229,7 +1241,8 @@ async function saveToNewJsonFile(newPath, newFileName) {
                     numberRuleBase: state.numberRuleBase,
                     numberRulePersonCount: state.numberRulePersonCount,
                     numberRuleThingCount: state.numberRuleThingCount,
-                    numberRuleMonth: state.numberRuleMonth
+                    numberRuleMonth: state.numberRuleMonth,
+                    numberSubRulesEnabled: state.numberSubRulesEnabled
                 }
             },
             presetData: baseJson.presetData || {}
@@ -1240,6 +1253,12 @@ async function saveToNewJsonFile(newPath, newFileName) {
         if (!result.success) {
             showToast('保存に失敗しました: ' + result.error, 'error');
             return;
+        }
+
+        state.currentJsonPath = newPath;
+        state.currentLoadedJson = newJson;
+        if (typeof window.markProofRulesSaved === 'function') {
+            window.markProofRulesSaved();
         }
 
         showToast(`"${newFileName}" に保存しました`, 'success');

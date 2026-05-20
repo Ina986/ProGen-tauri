@@ -108,6 +108,18 @@
     const currentWindow = getCurrentWindow();
 
     // ===== カスタムタイトルバー用ウインドウコントロール =====
+    let closingAfterUnsavedRulesConfirm = false;
+
+    async function confirmCloseWithUnsavedRules() {
+        if (typeof window.hasUnsavedProofRules !== 'function' || !window.hasUnsavedProofRules()) {
+            return true;
+        }
+        if (typeof window.confirmUnsavedProofRulesIfNeeded !== 'function') {
+            return window.confirm('表記ルールの変更が保存されていません。保存せずにアプリを終了しますか？');
+        }
+        return await window.confirmUnsavedProofRulesIfNeeded('exit');
+    }
+
     window.winMinimize = () => currentWindow.minimize();
     window.winToggleMaximize = async () => {
         const maximized = await currentWindow.isMaximized();
@@ -115,6 +127,23 @@
         else currentWindow.maximize();
     };
     window.winClose = () => currentWindow.close();
+    currentWindow.onCloseRequested(async (event) => {
+        if (closingAfterUnsavedRulesConfirm) return;
+        if (typeof window.hasUnsavedProofRules !== 'function' || !window.hasUnsavedProofRules()) return;
+
+        event.preventDefault();
+        const confirmed = await confirmCloseWithUnsavedRules();
+        if (confirmed) {
+            closingAfterUnsavedRulesConfirm = true;
+            await currentWindow.close();
+        }
+    });
+    window.addEventListener('beforeunload', (event) => {
+        if (!closingAfterUnsavedRulesConfirm && typeof window.hasUnsavedProofRules === 'function' && window.hasUnsavedProofRules()) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
+    });
     // 最大化状態が変わったら .is-maximized クラスを body に付与
     currentWindow.onResized(async () => {
         const m = await currentWindow.isMaximized();

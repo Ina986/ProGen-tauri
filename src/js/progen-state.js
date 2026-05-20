@@ -22,6 +22,8 @@ export const state = {
     symbolRules: [...defaultSymbolRules],
     currentProofRules: [],
     currentViewMode: 'edit',
+    proofRulesBaseline: '',
+    proofRulesTrackingEnabled: false,
 
     // オプションフラグ
     optionNgWordMasking: true,

@@ -827,6 +827,9 @@ async function goToHomeFromResultViewer() {
 
     if (!(await confirmHomeReset())) return;
     resetProofreadingResultOnHome();
+    if (typeof window.clearProofRulesSavedState === 'function') {
+        window.clearProofRulesSavedState();
+    }
 
     resultViewer.classList.add('page-transition-out-down');
     setTimeout(() => {
@@ -914,7 +917,12 @@ function clearResultPasteAreas() {
 
 let homeResetConfirmResolver = null;
 
-function confirmHomeReset() {
+async function confirmHomeReset() {
+    if (typeof window.confirmUnsavedProofRulesIfNeeded === 'function') {
+        const canLeave = await window.confirmUnsavedProofRulesIfNeeded('home');
+        if (!canLeave) return false;
+    }
+
     const modal = document.getElementById('homeResetConfirmModal');
     if (!modal) {
         return Promise.resolve(window.confirm('読み込みがリセットされます。よろしいですか？'));

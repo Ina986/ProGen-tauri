@@ -91,6 +91,9 @@ async function goToHomeFromProofreading() {
     if (typeof window.resetProofreadingResultOnHome === 'function') {
         window.resetProofreadingResultOnHome();
     }
+    if (typeof window.clearProofRulesSavedState === 'function') {
+        window.clearProofRulesSavedState();
+    }
 
     // アニメーション付き遷移
     proofreading.classList.add('page-transition-out-down');

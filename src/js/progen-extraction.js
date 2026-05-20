@@ -995,7 +995,15 @@ function goBackFromSpecSheet() {
     updateHeaderSaveButtons();
 }
 
-function goToHomeFromSpecSheet() {
+async function goToHomeFromSpecSheet() {
+    const confirmed = (typeof window.confirmHomeReset === 'function')
+        ? await window.confirmHomeReset()
+        : window.confirm('読み込みがリセットされます。よろしいですか？');
+    if (!confirmed) return;
+    if (typeof window.clearProofRulesSavedState === 'function') {
+        window.clearProofRulesSavedState();
+    }
+
     const page = document.getElementById('specSheetPage');
     page.style.display = 'none';
     const landing = document.getElementById('landingScreen');

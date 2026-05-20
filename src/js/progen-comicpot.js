@@ -419,7 +419,8 @@ function _cpExecuteGoHome() {
 async function cpGoHomeFromEditor() {
     const hasText = !!(cpText && cpText.length > 0);
     const hasImage = _cpHasViewerImage();
-    if (hasText || hasImage) {
+    const hasUnsavedRules = typeof window.hasUnsavedProofRules === 'function' && window.hasUnsavedProofRules();
+    if (hasText || hasImage || hasUnsavedRules) {
         const confirmed = (typeof window.confirmHomeReset === 'function')
             ? await window.confirmHomeReset()
             : window.confirm('読み込みがリセットされます。よろしいですか？');
@@ -427,6 +428,9 @@ async function cpGoHomeFromEditor() {
     }
     if (typeof window.resetProofreadingResultOnHome === 'function') {
         window.resetProofreadingResultOnHome();
+    }
+    if (typeof window.clearProofRulesSavedState === 'function') {
+        window.clearProofRulesSavedState();
     }
     _cpResetEditorState();
     _cpExecuteGoHome();
@@ -705,6 +709,7 @@ async function _autoSelectWorkJson(workTitle) {
                         if (opts.missingCharCheck !== undefined) state.optionMissingCharCheck = opts.missingCharCheck;
                         if (opts.nameRubyCheck !== undefined) state.optionNameRubyCheck = opts.nameRubyCheck;
                         if (opts.nonJoyoCheck !== undefined) state.optionNonJoyoCheck = opts.nonJoyoCheck;
+                        if (opts.numberRuleBase !== undefined) state.numberRuleBase = opts.numberRuleBase;
                         if (opts.numberRulePersonCount !== undefined) state.numberRulePersonCount = opts.numberRulePersonCount;
                         if (opts.numberRuleThingCount !== undefined) state.numberRuleThingCount = opts.numberRuleThingCount;
                         if (opts.numberRuleMonth !== undefined) state.numberRuleMonth = opts.numberRuleMonth;
@@ -754,6 +759,9 @@ async function _autoSelectWorkJson(workTitle) {
                 // 校正ページのオプションラベルを更新
                 if (typeof updateProofreadingOptionsLabel === 'function') {
                     updateProofreadingOptionsLabel();
+                }
+                if (typeof window.markProofRulesSaved === 'function') {
+                    window.markProofRulesSaved();
                 }
 
                 return;
