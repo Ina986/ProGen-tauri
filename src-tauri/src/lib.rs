@@ -988,6 +988,11 @@ fn get_comicpot_handoff() -> Option<HandoffData> {
     check_and_process_handoff()
 }
 
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 // ========================================
 // 更新チェック (GitHub Releases)
 // ========================================
@@ -1752,6 +1757,7 @@ pub fn run() {
             launch_mojiq_with_calibration,
             get_comicpot_handoff,
             respond_to_update,
+            exit_app,
             list_image_files,
             list_image_files_from_paths,
             load_image_preview,

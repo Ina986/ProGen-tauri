@@ -79,6 +79,9 @@
         // COMIC-POTハンドオフデータを要求（pull型）
         getComicPotHandoff: () => invoke('get_comicpot_handoff'),
 
+        // アプリ終了
+        exitApp: () => invoke('exit_app'),
+
         // 画像ビューアー
         showOpenImageFolderDialog: () => invoke('show_open_image_folder_dialog'),
         listImageFiles: (dirPath) => invoke('list_image_files', { dirPath }),
@@ -122,7 +125,9 @@
         const confirmed = await confirmCloseWithUnsavedRules();
         if (!confirmed) return;
 
-        if (typeof currentWindow.destroy === 'function') {
+        if (window.electronAPI && typeof window.electronAPI.exitApp === 'function') {
+            await window.electronAPI.exitApp();
+        } else if (typeof currentWindow.destroy === 'function') {
             await currentWindow.destroy();
         } else {
             await currentWindow.close();
