@@ -7523,3 +7523,146 @@ tr.inactive td {
     opacity: 0.4;
     cursor: not-allowed;
 }
+
+/* COMIC-POT text editor: chunk textareas with drag handles */
+.cp-page-section .cp-text-chunk,
+.cp-page-text-panel-body > .cp-text-chunk {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr);
+    align-items: stretch;
+    gap: 4px;
+    padding: 0 8px;
+    border-left: 2px solid transparent;
+    position: relative;
+}
+
+.cp-text-chunk-handle {
+    width: 20px;
+    min-height: 30px;
+    align-self: stretch;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: grab;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0.6;
+    font-family: var(--font-main);
+}
+
+.cp-text-chunk-handle:hover,
+.cp-text-chunk-handle:focus-visible {
+    background: var(--surface-elevated);
+    color: var(--ink-blue);
+    opacity: 1;
+    outline: none;
+}
+
+.cp-text-chunk.dragging {
+    opacity: 0.45;
+}
+
+.cp-text-chunk.drop-before::before,
+.cp-text-chunk.drop-after::after {
+    content: '';
+    position: absolute;
+    left: 8px;
+    right: 8px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--ink-blue);
+    box-shadow: 0 0 0 2px rgba(59, 89, 152, 0.12);
+}
+
+.cp-text-chunk.drop-before::before {
+    top: -1px;
+}
+
+.cp-text-chunk.drop-after::after {
+    bottom: -1px;
+}
+
+.cp-page-textarea {
+    width: 100%;
+    min-height: 30px;
+    resize: none;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    padding: 2px 6px;
+    outline: none;
+    white-space: pre-wrap;
+}
+
+.cp-page-textarea:hover {
+    background: rgba(255, 255, 255, 0.45);
+}
+
+.cp-page-textarea:focus {
+    border-color: var(--sage, #7a9b76);
+    background: #fffef5;
+    box-shadow: 0 0 0 2px rgba(122, 155, 118, 0.15);
+}
+
+.cp-page-plain-editor {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr);
+    position: relative;
+    padding: 0 8px 8px 4px;
+}
+
+.cp-page-text-gutter {
+    position: relative;
+    min-height: 100%;
+}
+
+.cp-page-gutter-handle {
+    position: absolute;
+    left: 2px;
+    width: 20px;
+    min-height: 24px;
+    height: 24px;
+    z-index: 2;
+}
+
+.cp-page-gutter-handle.drop-before::before,
+.cp-page-gutter-handle.drop-after::after {
+    content: '';
+    position: absolute;
+    left: -2px;
+    right: -2px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--ink-blue);
+    box-shadow: 0 0 0 2px rgba(59, 89, 152, 0.12);
+}
+
+.cp-page-gutter-handle.drop-before::before {
+    top: -3px;
+}
+
+.cp-page-gutter-handle.drop-after::after {
+    bottom: -3px;
+}
+
+.cp-page-textarea--plain {
+    min-height: 180px;
+    padding: 8px 10px;
+    border-color: transparent;
+    border-radius: 4px;
+    background: transparent;
+    resize: none;
+    overflow: hidden;
+    tab-size: 4;
+}
+
+.cp-page-textarea--plain:focus {
+    background: #fffef5;
+}

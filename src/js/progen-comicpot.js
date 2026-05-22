@@ -32,6 +32,9 @@ let cpRubyMode = localStorage.getItem('cpRubyMode') || 'comicpot'; // 'comicpot'
 // 直近に .cp-page-text-block 上で確定した選択範囲（ボタン押下で focus が外れる前に保持しておく）
 // { absStart, absEnd, text } | null
 let _cpLastBlockSelection = null;
+let _cpActiveChunkTextarea = null;
+let _cpDraggedTextChunk = null;
+let _cpDragOverTextChunk = null;
 
 // ===== COMIC-POT スプリットビュー =====
 let cpResultPanelVisible = false;
@@ -2331,6 +2334,24 @@ function cpUpdateRubyPreview() {
 // .cp-page-text-block 内の選択を絶対オフセット付きで保持する
 // （ルビボタン押下時には focus が外れて選択が消えるので、selectionchange で逐次キャプチャしておく）
 function _cpUpdateBlockSelectionFromDom() {
+    const activeTextarea = document.activeElement && document.activeElement.closest
+        ? document.activeElement.closest('.cp-page-textarea')
+        : null;
+    if (activeTextarea) {
+        _cpActiveChunkTextarea = activeTextarea;
+        const startInChunk = activeTextarea.selectionStart || 0;
+        const endInChunk = activeTextarea.selectionEnd || 0;
+        if (startInChunk !== endInChunk) {
+            const blockOffset = parseInt(activeTextarea.dataset.offset || '0', 10);
+            _cpLastBlockSelection = {
+                absStart: blockOffset + startInChunk,
+                absEnd: blockOffset + endInChunk,
+                text: activeTextarea.value.substring(startInChunk, endInChunk),
+            };
+        }
+        return;
+    }
+
     const sel = window.getSelection && window.getSelection();
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
     const range = sel.getRangeAt(0);
@@ -2964,49 +2985,249 @@ let _cpEditingBlockEl = null;
 // 表示モード: true=全ページ表示 / false=現在ページのみ（デフォルト: 全ページ）
 let _cpShowAllPages = true;
 
-// 編集可能なテキストブロック要素を生成（共通ヘルパ）
-function _cpCreateBlockEl(pageNum, idx, b) {
-    const el = document.createElement('div');
-    el.className = 'cp-page-text-block';
-    el.dataset.blockIndex = String(idx);
-    el.dataset.pageNum = String(pageNum);
-    el.dataset.offset = String(b.offset);
-    el.dataset.originalText = b.text;
-    el.textContent = b.text;
-    el.contentEditable = 'true';
-    el.spellcheck = false;
-    el.title = 'クリックして編集（Esc で取消・Ctrl+Enter で確定）';
-    el.addEventListener('focus', () => {
-        _cpEditingBlock = true;
-        _cpEditingBlockEl = el;
+function _cpUpdateTextFromEditorValue(updated) {
+    cpEditTextArea.value = updated;
+    cpText = updated;
+    cpComicPotHeader = cpExtractComicPotHeader(updated);
+    cpChunks = cpParseTextToChunks(updated);
+
+    cpUpdateStatusBar();
+    cpUpdateEditorFileRow();
+    cpUpdateEditorFooter();
+    cpUpdateEditorEmptyState();
+    if (cpBtnCopy) cpBtnCopy.disabled = !cpText.trim();
+    if (cpCopyBtnFloat) { cpCopyBtnFloat.style.display = 'flex'; cpCopyBtnFloat.disabled = !cpText.trim(); }
+    if (cpBtnConvert) cpBtnConvert.disabled = !cpText.trim();
+    cpUpdateToolbarState();
+}
+
+function _cpNormalizeEditorText(value) {
+    return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function _cpAutosizePageTextarea(textarea) {
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = Math.max(textarea.scrollHeight, 180) + 'px';
+}
+
+function _cpGetPageTextareaInfo(text, region) {
+    const raw = text.substring(region.markerEnd, region.end);
+    const leading = (raw.match(/^\n+/) || [''])[0].length;
+    const trailing = (raw.match(/\n+$/) || [''])[0].length;
+    const value = raw.substring(leading, raw.length - trailing);
+    return { value, offset: region.markerEnd + leading };
+}
+
+function _cpReplacePageText(text, pageNum, pageContent) {
+    const regions = cpScanPageRegions(text);
+    const region = regions.find(r => r.page === pageNum);
+    if (!region) return text;
+
+    const before = text.substring(0, region.markerEnd);
+    const after = text.substring(region.end);
+    const normalizedPage = _cpNormalizeEditorText(pageContent).replace(/^\n+|\n+$/g, '');
+    const prefix = region.markerEnd > region.start && !before.endsWith('\n') ? before + '\n' : before;
+    const suffix = after && normalizedPage && !after.startsWith('\n') ? '\n' + after : after;
+    return prefix + normalizedPage + suffix;
+}
+
+function _cpSyncTextareaSelection(textarea) {
+    if (!textarea) return;
+    _cpActiveChunkTextarea = textarea;
+    const start = textarea.selectionStart || 0;
+    const end = textarea.selectionEnd || 0;
+    if (start === end) return;
+    const blockOffset = parseInt(textarea.dataset.offset || '0', 10);
+    _cpLastBlockSelection = {
+        absStart: blockOffset + start,
+        absEnd: blockOffset + end,
+        text: textarea.value.substring(start, end),
+    };
+}
+
+function _cpChunkRangesForPageText(value) {
+    const text = _cpNormalizeEditorText(value);
+    const rawBlocks = cpSplitBlocksRaw(text);
+    let searchFrom = 0;
+    return rawBlocks.map((block, index) => {
+        const start = text.indexOf(block, searchFrom);
+        const safeStart = start >= 0 ? start : searchFrom;
+        const end = safeStart + block.length;
+        searchFrom = end;
+        const line = text.substring(0, safeStart).split('\n').length - 1;
+        return { index, text: block, start: safeStart, end, line };
     });
-    el.addEventListener('blur', () => {
+}
+
+function _cpRefreshPageEditorHandles(editor) {
+    const textarea = editor && editor.querySelector ? editor.querySelector('.cp-page-textarea') : null;
+    const gutter = editor && editor.querySelector ? editor.querySelector('.cp-page-text-gutter') : null;
+    if (!textarea || !gutter) return;
+
+    gutter.innerHTML = '';
+    const lineHeight = parseFloat(getComputedStyle(textarea).lineHeight) || 21;
+    const paddingTop = parseFloat(getComputedStyle(textarea).paddingTop) || 0;
+    const chunks = _cpChunkRangesForPageText(textarea.value);
+    chunks.forEach(chunk => {
+        const handle = document.createElement('button');
+        handle.type = 'button';
+        handle.className = 'cp-text-chunk-handle cp-page-gutter-handle';
+        handle.draggable = true;
+        handle.dataset.chunkIndex = String(chunk.index);
+        handle.dataset.pageNum = textarea.dataset.pageNum || '1';
+        handle.title = 'ドラッグしてチャンクを並び替え';
+        handle.setAttribute('aria-label', 'チャンクを並び替え');
+        handle.textContent = '⋮⋮';
+        handle.style.top = (paddingTop + chunk.line * lineHeight + 2) + 'px';
+
+        handle.addEventListener('dragstart', (e) => {
+            _cpEditingBlock = false;
+            _cpEditingBlockEl = null;
+            _cpDraggedTextChunk = { editor, index: chunk.index };
+            handle.classList.add('dragging');
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', String(chunk.index));
+            }
+        });
+        handle.addEventListener('dragend', () => {
+            handle.classList.remove('dragging');
+            _cpDraggedTextChunk = null;
+            _cpClearChunkDropState();
+        });
+        handle.addEventListener('dragover', (e) => {
+            if (!_cpDraggedTextChunk || _cpDraggedTextChunk.editor !== editor || _cpDraggedTextChunk.index === chunk.index) return;
+            e.preventDefault();
+            _cpClearChunkDropState();
+            const rect = handle.getBoundingClientRect();
+            const position = e.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
+            handle.classList.add(position === 'after' ? 'drop-after' : 'drop-before');
+            _cpDragOverTextChunk = { editor, index: chunk.index, position };
+        });
+        handle.addEventListener('drop', (e) => {
+            if (!_cpDraggedTextChunk || _cpDraggedTextChunk.editor !== editor) return;
+            e.preventDefault();
+            const target = _cpDragOverTextChunk || { editor, index: chunk.index, position: 'before' };
+            _cpMoveChunkInPage(editor, _cpDraggedTextChunk.index, target.index, target.position);
+            _cpDraggedTextChunk = null;
+            _cpClearChunkDropState();
+        });
+        gutter.appendChild(handle);
+    });
+}
+
+function _cpClearChunkDropState() {
+    document.querySelectorAll('.cp-page-gutter-handle.drop-before, .cp-page-gutter-handle.drop-after').forEach(el => {
+        el.classList.remove('drop-before', 'drop-after');
+    });
+    _cpDragOverTextChunk = null;
+}
+
+function _cpMoveChunkInPage(editor, fromIndex, toIndex, position) {
+    const textarea = editor && editor.querySelector ? editor.querySelector('.cp-page-textarea') : null;
+    if (!textarea) return;
+    const chunks = _cpChunkRangesForPageText(textarea.value);
+    if (!chunks[fromIndex] || !chunks[toIndex]) return;
+    const moving = chunks[fromIndex].text;
+    const reordered = chunks.map(c => c.text);
+    reordered.splice(fromIndex, 1);
+    let insertAt = toIndex;
+    if (fromIndex < toIndex) insertAt -= 1;
+    if (position === 'after') insertAt += 1;
+    insertAt = Math.max(0, Math.min(reordered.length, insertAt));
+    reordered.splice(insertAt, 0, moving);
+
+    textarea.value = reordered.join('\n\n');
+    _cpAutosizePageTextarea(textarea);
+    _cpSyncPageTextareaToText(textarea);
+    _cpRefreshPageEditorHandles(editor);
+}
+
+function _cpSyncPageTextareaToText(textarea) {
+    if (!textarea || !cpEditTextArea) return;
+    const pageNum = parseInt(textarea.dataset.pageNum || '1', 10);
+    const updated = _cpReplacePageText(cpEditTextArea.value, pageNum, textarea.value);
+    _cpUpdateTextFromEditorValue(updated);
+    const regions = cpScanPageRegions(updated);
+    const region = regions.find(r => r.page === pageNum);
+    if (region) {
+        const info = _cpGetPageTextareaInfo(updated, region);
+        textarea.dataset.offset = String(info.offset);
+    }
+}
+
+function _cpCreatePageEditorEl(region, targetPage) {
+    const text = (cpEditTextArea && cpEditTextArea.value) ? cpEditTextArea.value : cpText;
+    const info = _cpGetPageTextareaInfo(text, region);
+    const section = document.createElement('div');
+    section.className = 'cp-page-section';
+    section.dataset.page = String(region.page);
+    if (region.page === targetPage) section.classList.add('current-page');
+
+    const hasMarker = region.markerEnd > region.start;
+    if (hasMarker) {
+        const header = document.createElement('div');
+        header.className = 'cp-page-section-header';
+        header.textContent = 'P' + region.page;
+        section.appendChild(header);
+    }
+
+    const editor = document.createElement('div');
+    editor.className = 'cp-page-plain-editor';
+    editor.dataset.pageNum = String(region.page);
+
+    const gutter = document.createElement('div');
+    gutter.className = 'cp-page-text-gutter';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'cp-page-textarea cp-page-textarea--plain';
+    textarea.value = info.value;
+    textarea.dataset.pageNum = String(region.page);
+    textarea.dataset.offset = String(info.offset);
+    textarea.spellcheck = false;
+    textarea.rows = Math.max(8, info.value.split('\n').length + 1);
+
+    editor.appendChild(gutter);
+    editor.appendChild(textarea);
+    section.appendChild(editor);
+
+    requestAnimationFrame(() => {
+        _cpAutosizePageTextarea(textarea);
+        _cpRefreshPageEditorHandles(editor);
+    });
+
+    textarea.addEventListener('focus', () => {
+        _cpEditingBlock = true;
+        _cpEditingBlockEl = textarea;
+        _cpActiveChunkTextarea = textarea;
+    });
+    textarea.addEventListener('select', () => _cpSyncTextareaSelection(textarea));
+    textarea.addEventListener('keyup', () => _cpSyncTextareaSelection(textarea));
+    textarea.addEventListener('mouseup', () => _cpSyncTextareaSelection(textarea));
+    textarea.addEventListener('input', () => {
+        _cpAutosizePageTextarea(textarea);
+        _cpSyncPageTextareaToText(textarea);
+        _cpRefreshPageEditorHandles(editor);
+    });
+    textarea.addEventListener('blur', () => {
         _cpEditingBlock = false;
         _cpEditingBlockEl = null;
-        cpCommitPageTextBlock(pageNum, idx, el);
+        _cpSyncPageTextareaToText(textarea);
+        _cpRefreshPageEditorHandles(editor);
     });
-    el.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            e.preventDefault();
-            el.innerText = el.dataset.originalText || '';
-            el.blur();
-        } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            el.blur();
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-            // ブロック編集中の矢印キーはカーソル移動に使う。
-            // 上位（ビューア document keydown / パネルのページ送り）へは伝播させない。
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
             e.stopPropagation();
         }
     });
-    return el;
+
+    return section;
 }
 
-// 現在ページのテキストブロックを #cpPageTextPanelBody に描画
 function cpRenderPageTextPanel(pageNum) {
     const body = document.getElementById('cpPageTextPanelBody');
     if (!body) return;
-    // 編集中は再描画でカーソルが飛ばないようスキップ
     if (_cpEditingBlock) return;
 
     if (!cpText) {
@@ -3016,32 +3237,15 @@ function cpRenderPageTextPanel(pageNum) {
 
     const text = (cpEditTextArea && cpEditTextArea.value) ? cpEditTextArea.value : cpText;
     const regions = cpScanPageRegions(text);
-    const total = regions.length > 0 ? regions[regions.length - 1].page : 0;
     const hasMarkers = regions.length > 1 || (regions.length === 1 && regions[0].markerEnd > 0);
-    const pageMap = cpBuildPageBlocks(text);
-    const targetPage = (pageNum != null) ? pageNum : 1;
+    const targetPage = (pageNum != null) ? pageNum : (regions[0] ? regions[0].page : 1);
 
     body.innerHTML = '';
 
     if (_cpShowAllPages && hasMarkers) {
-        // ===== 全ページモード =====
-        const pageNumbers = [...pageMap.keys()].sort((a, b) => a - b);
-        if (pageNumbers.length === 0) return;
-        pageNumbers.forEach(pn => {
-            const blocks = pageMap.get(pn) || [];
-            if (blocks.length === 0) return;
-            const section = document.createElement('div');
-            section.className = 'cp-page-section';
-            section.dataset.page = String(pn);
-            if (pn === targetPage) section.classList.add('current-page');
-            const header = document.createElement('div');
-            header.className = 'cp-page-section-header';
-            header.textContent = 'P' + pn;
-            section.appendChild(header);
-            blocks.forEach((b, idx) => section.appendChild(_cpCreateBlockEl(pn, idx, b)));
-            body.appendChild(section);
+        regions.forEach(region => {
+            body.appendChild(_cpCreatePageEditorEl(region, targetPage));
         });
-        // 画像連動時は現在ページのセクションへスクロール
         if (pageNum != null) {
             const targetSec = body.querySelector('.cp-page-section[data-page="' + targetPage + '"]');
             if (targetSec && typeof targetSec.scrollIntoView === 'function') {
@@ -3049,26 +3253,13 @@ function cpRenderPageTextPanel(pageNum) {
             }
         }
     } else {
-        // ===== 現在ページのみモード =====
-        const blocks = pageMap.get(targetPage) || [];
-        if (blocks.length === 0) return;
-        // 全ページモードと同じ見た目にするため .cp-page-section でラップ
-        const section = document.createElement('div');
-        section.className = 'cp-page-section current-page';
-        section.dataset.page = String(targetPage);
-        if (hasMarkers) {
-            const header = document.createElement('div');
-            header.className = 'cp-page-section-header';
-            header.textContent = 'P' + targetPage;
-            section.appendChild(header);
-        }
-        blocks.forEach((b, idx) => section.appendChild(_cpCreateBlockEl(targetPage, idx, b)));
-        body.appendChild(section);
+        const region = regions.find(r => r.page === targetPage) || regions[0];
+        if (!region) return;
+        body.appendChild(_cpCreatePageEditorEl(region, targetPage));
         body.scrollTop = 0;
     }
 }
 
-// 表示モード切替: セグメントタブから呼ばれる ('all' | 'single')
 function cpSetPageMode(mode) {
     _cpShowAllPages = (mode !== 'single');
     const allBtn = document.getElementById('cpPageModeAll');
@@ -3141,46 +3332,13 @@ function cpEditorColumnKeydown(e) {
 // ブロックの編集内容を textarea / cpText に反映
 function cpCommitPageTextBlock(pageNum, blockIdx, el) {
     if (!cpEditTextArea) return;
-    // innerText を使い contenteditable の <br>/<div> による改行を保持
-    const newContent = el.innerText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    const original = el.dataset.originalText || '';
-    if (newContent === original) return; // 変更なしならスキップ
-
-    const text = cpEditTextArea.value;
-    // 編集前の絶対オフセットと長さを使って当該段落を置換
-    const pageMap = cpBuildPageBlocks(text);
-    const blocks = pageMap.get(pageNum) || [];
-    const target = blocks[blockIdx];
-    if (!target || target.text !== original) {
-        // テキストが想定とズレている場合は安全側で再描画のみ
-        cpRenderPageTextPanel(_cpLastReportedPage);
-        return;
-    }
-
-    const before = text.substring(0, target.offset);
-    const after = text.substring(target.offset + target.text.length);
-    const updated = before + newContent + after;
-
-    cpEditTextArea.value = updated;
-    cpText = updated;
-    cpComicPotHeader = cpExtractComicPotHeader(updated);
-    cpChunks = cpParseTextToChunks(updated);
-
-    // 既存の UI 更新フックを呼び出し
-    cpUpdateStatusBar();
-    cpUpdateEditorFileRow();
-    cpUpdateEditorFooter();
-    cpUpdateEditorEmptyState();
-    if (cpBtnCopy) cpBtnCopy.disabled = !cpText.trim();
-    if (cpCopyBtnFloat) { cpCopyBtnFloat.style.display = 'flex'; cpCopyBtnFloat.disabled = !cpText.trim(); }
-    if (cpBtnConvert) cpBtnConvert.disabled = !cpText.trim();
-    cpUpdateToolbarState();
-
-    // 再描画（編集中フラグは blur で既に false になっている）
+    const textarea = el && el.matches && el.matches('.cp-page-textarea') ? el : (el && el.querySelector ? el.querySelector('.cp-page-textarea') : null);
+    if (!textarea) return;
+    _cpSyncPageTextareaToText(textarea);
+    _cpLastBlockSelection = null;
     cpRenderPageTextPanel(_cpLastReportedPage);
 }
 
-// 折りたたみトグル
 function cpPageTextPanelToggle() {
     const panel = document.getElementById('cpPageTextPanel');
     if (!panel) return;
