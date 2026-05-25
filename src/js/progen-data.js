@@ -826,12 +826,20 @@ function updateTxtUploadStatus() {
     updatePromptGenerationButtonState();
 
     if (state.manuscriptTxtFiles.length === 0) {
-        statusEl.textContent = '';
+        if (statusEl) statusEl.textContent = '';
         if (manageBtn) manageBtn.style.display = 'none';
     } else {
-        statusEl.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>';
-        statusEl.style.color = '#27ae60';
+        if (statusEl) {
+            statusEl.innerHTML = '<span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>';
+            statusEl.style.color = '#27ae60';
+        }
         if (manageBtn) manageBtn.style.display = 'inline-block';
+    }
+
+    const manageModal = document.getElementById('txtManageModal');
+    const listEl = document.getElementById('txtFileList');
+    if (listEl && (!manageModal || manageModal.style.display !== 'none')) {
+        renderTxtFileList();
     }
 }
 

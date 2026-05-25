@@ -252,9 +252,53 @@ function cpGetValidSerifFiles(files) {
     return files.filter(file => file && cpNormalizeTextContent(file.content).trim() !== '');
 }
 
+function cpBuildSerifFileInfo(name, content, size, path) {
+    const normalized = cpNormalizeTextContent(content);
+    return {
+        name: name || '無題.txt',
+        content: normalized,
+        size: size || new Blob([normalized]).size,
+        path: path || ''
+    };
+}
+
+function cpUpsertSerifFile(list, fileInfo) {
+    if (!Array.isArray(list)) list = [];
+    const idx = list.findIndex(file => {
+        if (!file) return false;
+        if (file.path && fileInfo.path) return file.path === fileInfo.path;
+        return file.name === fileInfo.name;
+    });
+    if (idx >= 0) {
+        list[idx] = fileInfo;
+        return list;
+    }
+    return list.concat([fileInfo]);
+}
+
+function cpSyncOpenedTextToSharedState(fileInfo) {
+    state.manuscriptTxtFiles = cpUpsertSerifFile(state.manuscriptTxtFiles, fileInfo);
+    state.proofreadingFiles = cpUpsertSerifFile(state.proofreadingFiles, fileInfo);
+    state.proofreadingContent = state.proofreadingFiles.map(f => f.content).join('\n\n--- 次のファイル ---\n\n');
+
+    if (typeof updateTxtUploadStatus === 'function') updateTxtUploadStatus();
+    if (typeof renderTxtFileList === 'function') renderTxtFileList();
+    if (typeof updateNonJoyoDetection === 'function') updateNonJoyoDetection();
+    if (typeof renderProofreadingFileList === 'function') renderProofreadingFileList();
+    if (typeof updateProofreadingPrompt === 'function') updateProofreadingPrompt();
+}
+
 function cpGetSerifFilesForCurrentSource() {
     if (cpSourcePage === 'proofreading') {
         return cpGetValidSerifFiles(state.proofreadingFiles);
+    }
+    if (cpSourcePage === 'resultViewer') {
+        const proofFiles = cpGetValidSerifFiles(state.proofreadingFiles);
+        return proofFiles.length > 0 ? proofFiles : cpGetValidSerifFiles(state.manuscriptTxtFiles);
+    }
+    if (cpSourcePage === 'landing') {
+        const manuscriptFiles = cpGetValidSerifFiles(state.manuscriptTxtFiles);
+        return manuscriptFiles.length > 0 ? manuscriptFiles : cpGetValidSerifFiles(state.proofreadingFiles);
     }
     if (cpSourcePage === 'extraction') {
         return cpGetValidSerifFiles(state.manuscriptTxtFiles);
@@ -293,11 +337,13 @@ function cpBuildCombinedSerifFile(files) {
 }
 
 function cpApplyPreloadedSerifText() {
-    if (cpText && cpText.trim() !== '') return false;
     const files = cpGetSerifFilesForCurrentSource();
     if (!files || files.length === 0) return false;
 
     const file = files.length === 1 ? files[0] : cpBuildCombinedSerifFile(files);
+    const incoming = cpNormalizeTextContent(file.content);
+    if (cpText && cpNormalizeTextContent(cpText) === incoming) return false;
+
     cpSetEditorTextFromSerifFile(file, { flash: '読み込み済みテキストを引き継ぎました' });
     return true;
 }
@@ -2150,6 +2196,7 @@ function cpHandleTextFileOpen() {
                 cpChunks = cpParseTextToChunks(content);
                 cpSelectedChunkIndex = null;
                 cpIsEditing = true;
+                cpSyncOpenedTextToSharedState(cpBuildSerifFileInfo(cpFileName, content, file.size, cpFilePath));
                 cpRender();
                 cpFlashEditorNotice('開きました: ' + cpFileName);
             };

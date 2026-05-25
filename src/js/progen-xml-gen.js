@@ -721,7 +721,54 @@ function closeExtractionResultPasteModal() {
     if (proofreadingPasteTab) proofreadingPasteTab.classList.remove('behind-modal');
 }
 
-async function saveExtractionResultText(openEditorAfterSave) {
+function upsertExtractionResultFile(list, fileInfo) {
+    if (!Array.isArray(list)) return [fileInfo];
+    const idx = list.findIndex(file => {
+        if (!file) return false;
+        if (file.path && fileInfo.path) return file.path === fileInfo.path;
+        return file.name === fileInfo.name;
+    });
+    if (idx >= 0) {
+        list[idx] = fileInfo;
+        return list;
+    }
+    return list.concat([fileInfo]);
+}
+
+function openExtractionResultSaveSuccessModal(fileInfo) {
+    const modal = document.getElementById('extractionResultSaveSuccessModal');
+    const pathEl = document.getElementById('extractionResultSaveSuccessPath');
+    if (pathEl) pathEl.textContent = fileInfo.path || fileInfo.filePath || fileInfo.name || '';
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeExtractionResultSaveSuccessModal() {
+    const modal = document.getElementById('extractionResultSaveSuccessModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function syncExtractionResultFileToTextLists(fileInfo) {
+    state.manuscriptTxtFiles = upsertExtractionResultFile(state.manuscriptTxtFiles, fileInfo);
+    state.proofreadingFiles = upsertExtractionResultFile(state.proofreadingFiles, fileInfo);
+    state.proofreadingContent = state.proofreadingFiles.map(f => f.content).join('\n\n--- 次のファイル ---\n\n');
+
+    [
+        window.updateTxtUploadStatus,
+        window.renderTxtFileList,
+        window.updateProofreadingPrompt,
+        window.updateNonJoyoDetection,
+        window.renderProofreadingFileList
+    ].forEach(fn => {
+        if (typeof fn !== 'function') return;
+        try {
+            fn();
+        } catch (error) {
+            console.warn('抽出結果テキストのUI反映をスキップしました:', error);
+        }
+    });
+}
+
+async function saveExtractionResultText() {
     const textarea = document.getElementById('extractionResultPasteArea');
     const content = textarea ? textarea.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n') : '';
     if (!content.trim()) {
@@ -734,30 +781,41 @@ async function saveExtractionResultText(openEditorAfterSave) {
         return;
     }
 
-    const dialogResult = await window.electronAPI.showSaveTextDialog('抽出結果.txt');
-    if (!dialogResult.success) return;
+    let dialogResult;
+    let saveResult;
+    try {
+        dialogResult = await window.electronAPI.showSaveTextDialog('抽出結果.txt');
+        if (!dialogResult || !dialogResult.success || !dialogResult.filePath) return;
 
-    const saveResult = await window.electronAPI.writeTextFile(dialogResult.filePath, content);
-    if (!saveResult.success) {
+        saveResult = await window.electronAPI.writeTextFile(dialogResult.filePath, content);
+    } catch (error) {
+        console.error('抽出結果テキスト保存エラー:', error);
         showToast('保存に失敗しました', 'error');
         return;
     }
 
-    showToast('抽出結果テキストを保存しました', 'success');
-    closeExtractionResultPasteModal();
-
-    if (openEditorAfterSave && typeof cpLoadFromHandoff === 'function') {
-        const fileName = dialogResult.filePath.replace(/\\/g, '/').split('/').pop() || '抽出結果.txt';
-        await cpLoadFromHandoff({
-            fileName,
-            filePath: dialogResult.filePath,
-            content
-        });
+    if (!saveResult || !saveResult.success) {
+        showToast(`保存に失敗しました${saveResult && saveResult.error ? `: ${saveResult.error}` : ''}`, 'error');
+        return;
     }
+
+    const savedName = dialogResult.filePath.replace(/\\/g, '/').split('/').pop() || '抽出結果.txt';
+    const fileInfo = {
+        fileName: savedName,
+        name: savedName,
+        filePath: dialogResult.filePath,
+        path: dialogResult.filePath,
+        content,
+        size: new Blob([content]).size
+    };
+
+    syncExtractionResultFileToTextLists(fileInfo);
+    closeExtractionResultPasteModal();
+    openExtractionResultSaveSuccessModal(fileInfo);
 }
 
 // ES Module exports
-export { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, saveExtractionResultText };
+export { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, closeExtractionResultSaveSuccessModal, saveExtractionResultText };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, saveExtractionResultText });
+Object.assign(window, { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, closeExtractionResultSaveSuccessModal, saveExtractionResultText });
