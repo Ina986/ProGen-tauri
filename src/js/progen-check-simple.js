@@ -161,7 +161,7 @@ function generateSimpleCheckPromptFromFiles(files) {
         });
     }
 
-    return generateSimpleCheckPromptWithText(manuscriptText);
+    return generateSimpleCheckWithRulesPromptWithText(manuscriptText);
 }
 
 // テキストを受け取って簡易チェックプロンプトを生成
@@ -761,7 +761,7 @@ function generateUnificationRulesXmlForCheck() {
     return xml;
 }
 
-// 簡易チェックプロンプト生成（項目8〜10のみ）- モーダル用
+// 正誤チェックプロンプト生成（7項目 + ルール確認）- モーダル用
 function generateSimpleCheckPrompt() {
     // 共通関数を使用
     return generateSimpleCheckPromptFromFiles(simpleCheckTxtFiles);
@@ -769,7 +769,7 @@ function generateSimpleCheckPrompt() {
 
 
 // ES Module exports
-export { openSimpleCheckModal, closeSimpleCheckModal, loadSimpleCheckTxt, renderSimpleCheckFileList, removeSimpleCheckTxt, updateSimpleCheckSubmitBtn, copySimpleCheckAndOpenGemini, startSimpleCheckFromLanding, generateSimpleCheckPromptFromFiles, generateSimpleCheckPromptWithText, getNonJoyoCheckItemXml, generateSimpleCheckWithRulesPromptWithText, generateUnificationRulesXmlForCheck, generateSimpleCheckPrompt };
+export { openSimpleCheckModal, closeSimpleCheckModal, loadSimpleCheckTxt, renderSimpleCheckFileList, removeSimpleCheckTxt, updateSimpleCheckSubmitBtn, copySimpleCheckAndOpenGemini, startSimpleCheckFromLanding, generateSimpleCheckPromptFromFiles, getNonJoyoCheckItemXml, generateSimpleCheckWithRulesPromptWithText, generateUnificationRulesXmlForCheck, generateSimpleCheckPrompt };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { openSimpleCheckModal, closeSimpleCheckModal, loadSimpleCheckTxt, renderSimpleCheckFileList, removeSimpleCheckTxt, updateSimpleCheckSubmitBtn, copySimpleCheckAndOpenGemini, startSimpleCheckFromLanding, generateSimpleCheckPromptFromFiles, generateSimpleCheckPromptWithText, getNonJoyoCheckItemXml, generateSimpleCheckWithRulesPromptWithText, generateUnificationRulesXmlForCheck, generateSimpleCheckPrompt });
+Object.assign(window, { openSimpleCheckModal, closeSimpleCheckModal, loadSimpleCheckTxt, renderSimpleCheckFileList, removeSimpleCheckTxt, updateSimpleCheckSubmitBtn, copySimpleCheckAndOpenGemini, startSimpleCheckFromLanding, generateSimpleCheckPromptFromFiles, getNonJoyoCheckItemXml, generateSimpleCheckWithRulesPromptWithText, generateUnificationRulesXmlForCheck, generateSimpleCheckPrompt });

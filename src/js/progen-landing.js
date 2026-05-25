@@ -220,7 +220,7 @@ function startLandingSimpleCheck() {
         return;
     }
 
-    const prompt = generateSimpleCheckPromptWithText(state.landingProofreadingContent);
+    const prompt = generateSimpleCheckWithRulesPromptWithText(state.landingProofreadingContent);
     navigator.clipboard.writeText(prompt).then(() => {
         window.open('https://gemini.google.com/app', '_blank');
     });
@@ -984,7 +984,7 @@ async function copyProofreadingPromptAndOpenGemini(type) {
     }
 
     const isSimple = type === 'simple';
-    const generator = isSimple ? window.generateSimpleCheckPromptWithText : window.generateVariationCheckPromptWithText;
+    const generator = isSimple ? window.generateSimpleCheckWithRulesPromptWithText : window.generateVariationCheckPromptWithText;
     if (typeof generator !== 'function') {
         showToast('プロンプト生成機能の読み込みに失敗しました', 'error');
         return;
