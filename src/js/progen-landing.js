@@ -365,53 +365,6 @@ async function startFormatting() {
     updateModeSwitcherButtons('formattingModeBtn');
 }
 
-// 校正プロンプトを開始
-async function startProofreading() {
-    const select = document.getElementById('landingLabelSelect');
-    const selectedValue = select.value;
-
-    // 校正ページのレーベルドロップダウンを同期
-    const proofreadingLabelSelect = document.getElementById('proofreadingLabelSelect');
-    if (proofreadingLabelSelect) {
-        proofreadingLabelSelect.value = selectedValue;
-    }
-
-    // レーベル表示テキストを更新
-    const textEl = document.getElementById('proofreadingLabelSelectorText');
-    if (textEl) {
-        textEl.textContent = selectedValue;
-        textEl.classList.remove('unselected');
-    }
-
-    // 選択されたレーベルのルールを読み込む（外部JSONから）
-    await loadLabelRulesForProofreading(selectedValue);
-
-    // ランディングから来たことを記録
-    state.proofreadingReturnTo = 'landing';
-
-    // 校正ページへ遷移（デフォルトは簡易チェック）
-    state.currentProofreadingMode = 'simple';
-    showProofreadingPage();
-
-    // 簡易チェックオプションを表示
-    const optionSection = document.getElementById('simpleCheckOptions');
-    if (optionSection) {
-        optionSection.classList.add('visible');
-    }
-
-    // モードボタンのアクティブ状態を更新
-    document.querySelectorAll('.proofreading-mode-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.mode === 'simple');
-    });
-
-    // チェック項目表示を更新
-    updateProofreadingCheckItems();
-
-    // ファイルリストとプロンプトを更新
-    renderProofreadingFileList();
-    updateProofreadingPrompt();
-}
-
 // 初期化（ランディング画面を表示した状態で開始）
 function init() {
     state.outputFormatSortMode = 'bottomToTop';
@@ -924,14 +877,6 @@ function switchToFormattingMode() {
     selectDataType('txt_only');
 }
 
-function switchToFormattingModeFromProofreading() {
-    // 校正ページから抽出ページに遷移してから整形モードに切り替える
-    goToExtractionFromProofreading();
-    setTimeout(() => {
-        switchToFormattingMode();
-    }, 250);
-}
-
 // ─── プロンプト生成バー (4ボタン) のハンドラ ─────────────────────
 // 抽出プロンプト生成
 function generateExtractionPrompt() {
@@ -1016,10 +961,10 @@ function generateVariationCheckPrompt2() {
 }
 
 // ES Module exports
-export { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, switchToFormattingModeFromProofreading, generateExtractionPrompt, generateFormattingPrompt, generateSimpleCheckPrompt2, generateVariationCheckPrompt2, initLandingLabelPicker, onLandingGenreChange, onLandingLabelChange, proceedFromLandingLabel };
+export { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, generateExtractionPrompt, generateFormattingPrompt, generateSimpleCheckPrompt2, generateVariationCheckPrompt2, initLandingLabelPicker, onLandingGenreChange, onLandingLabelChange, proceedFromLandingLabel };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, startProofreading, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, switchToFormattingModeFromProofreading, generateExtractionPrompt, generateFormattingPrompt, generateSimpleCheckPrompt2, generateVariationCheckPrompt2, initLandingLabelPicker, onLandingGenreChange, onLandingLabelChange, proceedFromLandingLabel });
+Object.assign(window, { startWithLabelDirect, startWithSelectedLabel, loadLandingProofreadingTxt, renderLandingProofreadingFileList, clearLandingProofreadingFiles, startLandingVariationCheck, startLandingSimpleCheck, transitionPages, hideLandingScreen, goToHome, startExtraction, startFormatting, init, toggleViewMode, showEditMode, showListMode, refreshCurrentView, renderTableMode, renderColumn1, renderColumn2, renderColumn3, renderOptionsCard, toggleDifficultOpen, toggleDifficultRuby, toggleOption, toggleCategoryAll, switchToExtractionMode, switchToFormattingMode, generateExtractionPrompt, generateFormattingPrompt, generateSimpleCheckPrompt2, generateVariationCheckPrompt2, initLandingLabelPicker, onLandingGenreChange, onLandingLabelChange, proceedFromLandingLabel });
 
 // DOMContentLoaded 時にレーベルピッカーを初期化
 if (typeof document !== 'undefined') {

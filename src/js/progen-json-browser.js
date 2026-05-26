@@ -57,61 +57,8 @@ async function startNewCreation(mode) {
     state.currentJsonPath = '';
     state.currentLoadedJson = null;
 
-    // 校正モードの場合は直接校正ページへ遷移
     if (mode === 'proofreading') {
-        // 校正ページのレーベル状態を未選択に設定
-        const proofreadingLabelSelect = document.getElementById('proofreadingLabelSelect');
-        const proofreadingLabelText = document.getElementById('proofreadingLabelSelectorText');
-        if (proofreadingLabelSelect) {
-            proofreadingLabelSelect.value = '';
-        }
-        if (proofreadingLabelText) {
-            proofreadingLabelText.textContent = '未選択';
-            proofreadingLabelText.classList.add('unselected');
-        }
-
-        // 校正ページのJSON表示はクリア
-        const proofJsonIndicator = document.getElementById('proofreadingJsonIndicator');
-        if (proofJsonIndicator) {
-            proofJsonIndicator.style.display = 'none';
-        }
-
-        // ランディングから直接校正ページへ（アニメーション付き）
-        const landing = document.getElementById('landingScreen');
-        const main = document.getElementById('mainWrapper');
-        const proofreading = document.getElementById('proofreadingPage');
-
-        landing.classList.add('page-transition-out-zoom');
-        setTimeout(() => {
-            landing.style.display = 'none';
-            main.style.display = 'none';
-            landing.classList.remove('page-transition-out-zoom');
-
-            proofreading.style.display = 'flex';
-            proofreading.classList.add('page-transition-zoom-in');
-            setTimeout(() => {
-                proofreading.classList.remove('page-transition-zoom-in');
-            }, 350);
-        }, 250);
-
-        // 校正ページの初期化
-        state.currentProofreadingMode = 'simple';
-        state.proofreadingReturnTo = 'landing';
-
-        // モードボタンのアクティブ状態を更新
-        document.querySelectorAll('.proofreading-mode-btn').forEach(btn => {
-            if (btn.dataset.mode === 'simple') {
-                btn.classList.add('active');
-            } else {
-                btn.classList.remove('active');
-            }
-        });
-
-        // チェック項目表示を更新
-        updateProofreadingCheckItems();
-        updateProofreadingOptionsLabel();
-        renderProofreadingFileList();
-        updateProofreadingPrompt();
+        showToast('校正専用ページは現在使用できません', 'warning');
         return;
     }
 
@@ -604,7 +551,7 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
 
         // モードに応じて遷移先を変更（通知より先に遷移）
         if (jsonFolderBrowserMode === 'proofreading') {
-            goToProofreadingPageFromMain('simple');
+            showToast('校正専用ページは現在使用できません', 'warning');
         } else if (jsonFolderBrowserMode === 'formatting') {
             selectDataType('txt_only');
         }
@@ -618,58 +565,6 @@ async function loadJsonFileFromGdrive(filePath, fileName) {
 
     } catch (error) {
         console.error('JSONファイルの読み込みに失敗:', error);
-        showToast('JSONファイルの読み込みに失敗しました: ' + error.message, 'error');
-    }
-}
-
-// ローカルのJSONファイルをネイティブダイアログで選択して読み込み
-async function selectLocalJsonFile(mode = 'extraction') {
-    if (!window.electronAPI || !window.electronAPI.openAndReadJsonDialog) {
-        showToast('この環境ではローカルJSON選択を使用できません', 'error');
-        return;
-    }
-
-    try {
-        const result = await window.electronAPI.openAndReadJsonDialog();
-        if (!result || result.canceled) return;
-
-        if (!result.success) {
-            showToast('JSONファイルの読み込みに失敗しました: ' + (result.error || '不明なエラー'), 'error');
-            return;
-        }
-
-        let data;
-        try {
-            data = JSON.parse(result.content);
-        } catch (error) {
-            showToast('JSONの解析に失敗しました: ' + error.message, 'error');
-            return;
-        }
-
-        const filePath = result.filePath || '';
-        const fileName = filePath.split(/[\\/]/).pop() || 'JSON';
-
-        jsonFolderBrowserMode = mode;
-        state.currentLoadedJson = data;
-        state.currentJsonPath = filePath;
-
-        const { fallbackLabel } = await processLoadedJson(data, fileName);
-
-        if (mode === 'proofreading') {
-            if (typeof goToProofreadingPageFromMain === 'function') {
-                goToProofreadingPageFromMain('simple');
-            }
-        } else if (mode === 'formatting') {
-            selectDataType('txt_only');
-        }
-
-        if (fallbackLabel) {
-            showToast(`"${fileName}" を読み込みました（表記ルール未登録のため、${fallbackLabel}のルールを表示しています）`, 'warning');
-        } else {
-            showToast(`"${fileName}" を読み込みました`, 'success');
-        }
-    } catch (error) {
-        console.error('ローカルJSONファイルの読み込みに失敗:', error);
         showToast('JSONファイルの読み込みに失敗しました: ' + error.message, 'error');
     }
 }
@@ -1332,7 +1227,7 @@ function initJsonFolderBrowser() {
 
 
 // ES Module exports
-export { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, selectLocalJsonFile, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser };
+export { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, selectLocalJsonFile, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser });
+Object.assign(window, { resetLandingLabelSelector, handleLandingNewCreation, startNewCreation, openJsonFolderBrowser, closeJsonFolderBrowser, clearLoadedJsonSelection, loadJsonFolderContents, createJsonFolderItem, cacheAllJsonFiles, collectJsonFilesRecursive, performJsonFolderSearch, displayJsonFolderSearchResults, highlightJsonSearchMatch, escapeHtmlForJson, clearJsonFolderSearch, loadJsonFileFromGdrive, selectFolderForSave, closeFolderActionModal, startNewWorkFromBrowser, showNewWorkForm, closeNewWorkModal, createNewWorkJson, selectJsonForOverwrite, findMatchingPresetLabel, processLoadedJson, saveProofRulesToJson, saveProofRulesToNewJson, saveToNewJsonFile, initJsonFolderBrowser });

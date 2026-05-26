@@ -15,7 +15,7 @@ function openLabelSelectModal(mode) {
     if (mode === 'extraction') {
         currentLabel = document.getElementById('labelSelector').value;
     } else if (mode === 'proofreading' || mode === 'comicpot-proofreading') {
-        currentLabel = document.getElementById('proofreadingLabelSelect').value;
+        currentLabel = document.getElementById('labelSelector')?.value || '';
     } else if (mode === 'landing') {
         currentLabel = document.getElementById('landingLabelSelect').value;
     }
@@ -54,24 +54,14 @@ async function selectLabelFromPopup(label) {
         if (geminiBtn) {
             geminiBtn.removeAttribute('disabled');
         }
-    } else if (currentLabelSelectMode === 'proofreading') {
-        // 校正ページ
-        document.getElementById('proofreadingLabelSelect').value = label;
-        const textEl = document.getElementById('proofreadingLabelSelectorText');
-        textEl.textContent = label;
-        textEl.classList.remove('unselected');
-        closeLabelSelectModal();
-        await changeProofreadingLabel();
     } else if (currentLabelSelectMode === 'comicpot-proofreading') {
         // テキストエディタ → 校正プロンプト遷移時のレーベル選択
-        document.getElementById('proofreadingLabelSelect').value = label;
-        const textEl = document.getElementById('proofreadingLabelSelectorText');
-        textEl.textContent = label;
-        textEl.classList.remove('unselected');
         // コールバックを退避してからモーダルを閉じる（closeでクリアされるため）
         const fn = state._cpPendingProofreadingTransition;
         closeLabelSelectModal();
-        await changeProofreadingLabel();
+        if (typeof loadLabelRulesForProofreading === 'function') {
+            await loadLabelRulesForProofreading(label);
+        }
         if (fn) fn();
     } else if (currentLabelSelectMode === 'landing') {
         // ランディング画面 → レーベル選択後に即ページ遷移
@@ -84,7 +74,7 @@ async function selectLabelFromPopup(label) {
         } else if (mode === 'formatting') {
             await startFormatting();
         } else if (mode === 'proofreading') {
-            await startProofreading();
+            showToast('校正専用ページは現在使用できません', 'warning');
         }
     }
 }
@@ -139,7 +129,7 @@ function toggleLabelDropdown(mode, anchorBtn) {
     if (mode === 'extraction') {
         currentLabel = document.getElementById('labelSelector').value;
     } else if (mode === 'proofreading' || mode === 'comicpot-proofreading') {
-        currentLabel = document.getElementById('proofreadingLabelSelect').value;
+        currentLabel = document.getElementById('labelSelector')?.value || '';
     } else if (mode === 'landing') {
         currentLabel = document.getElementById('landingLabelSelect').value;
     }
@@ -975,7 +965,8 @@ function goToSpecSheetPage() {
     // 全ページを非表示
     document.getElementById('landingScreen').style.display = 'none';
     document.getElementById('mainWrapper').style.display = 'none';
-    document.getElementById('proofreadingPage').style.display = 'none';
+    const proofreadingPage = document.getElementById('proofreadingPage');
+    if (proofreadingPage) proofreadingPage.style.display = 'none';
     document.getElementById('resultViewerPage').style.display = 'none';
 
     // テーブル生成

@@ -888,26 +888,19 @@ function getPasteTextarea(type) {
 }
 
 function syncPasteTextByTypeFromFields() {
-    const legacy = document.getElementById('resultPasteArea');
     const simpleArea = getPasteTextarea('simple');
     const variationArea = getPasteTextarea('variation');
 
     if (simpleArea) pasteTextByType.simple = simpleArea.value;
     if (variationArea) pasteTextByType.variation = variationArea.value;
-
-    if (legacy && pasteTargetType) {
-        legacy.value = pasteTextByType[pasteTargetType] || '';
-    }
 }
 
 function syncPasteFieldsFromState() {
     const simpleArea = getPasteTextarea('simple');
     const variationArea = getPasteTextarea('variation');
-    const legacy = document.getElementById('resultPasteArea');
 
     if (simpleArea) simpleArea.value = pasteTextByType.simple || '';
     if (variationArea) variationArea.value = pasteTextByType.variation || '';
-    if (legacy) legacy.value = pasteTextByType[pasteTargetType || 'simple'] || '';
 }
 
 function clearResultPasteAreas() {
@@ -1006,15 +999,7 @@ function updateProofreadingResultButton() {
 
 // 貼り付けタイプを選択
 function selectPasteType(type) {
-    const textarea = document.getElementById('resultPasteArea');
-
-    // 現在のタブの入力内容を保存
     syncPasteTextByTypeFromFields();
-    if (textarea && pasteTargetType) {
-        pasteTextByType[pasteTargetType] = textarea.value;
-    } else if (textarea && currentResultTab) {
-        pasteTextByType[currentResultTab] = textarea.value;
-    }
 
     pasteTargetType = type;
     currentResultTab = type;
@@ -1033,14 +1018,7 @@ function selectPasteType(type) {
 
 // 解析して結果ビューアに遷移
 function parseAndGoToViewer() {
-    // 現在のタブの入力内容を保存
-    const textarea = document.getElementById('resultPasteArea');
     syncPasteTextByTypeFromFields();
-    if (textarea && pasteTargetType && textarea.value) {
-        pasteTextByType[pasteTargetType] = textarea.value;
-    } else if (textarea && currentResultTab && textarea.value) {
-        pasteTextByType[currentResultTab] = textarea.value;
-    }
 
     const variationText = (pasteTextByType.variation || '').trim();
     const simpleText = (pasteTextByType.simple || '').trim();

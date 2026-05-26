@@ -434,106 +434,6 @@
     </div>
 </div>
 
-<!-- 提案チェックモーダル -->
-<div id="variationCheckModal" class="modal-overlay">
-    <div class="modal-content" style="max-width:700px;">
-        <div class="modal-header" >
-            <span>提案チェック（項目1〜14）</span>
-            <span class="close-modal" onclick="closeVariationCheckModal()">✕</span>
-        </div>
-        <div class="modal-body">
-            <p style="margin-bottom:15px; color:var(--text-secondary);">
-                チェック項目1〜14を実行するプロンプトを生成します。<br>
-                校正対象のセリフテキストを読み込んでからGeminiで開いてください。
-            </p>
-            <div style="margin-bottom:15px; padding:12px; background:var(--ink-blue-light); border-radius:8px; border-left:4px solid var(--ink-blue);">
-                <strong>チェック対象項目:</strong>
-                <ul style="margin:8px 0 0 20px; padding:0; font-size:0.9em;">
-                    <li><strong>1. 文字種による違い</strong> - 漢字・ひらがな・カタカナの混在</li>
-                    <li><strong>2. 送り仮名の違い</strong> - 送り仮名の不統一</li>
-                    <li><strong>3. 外来語・アルファベット表記</strong> - 長音符・大小文字等</li>
-                    <li><strong>4. 数字・漢数字の違い</strong> - アラビア数字と漢数字の混在</li>
-                    <li><strong>5. 略称や別の表現</strong> - 正式名称と略称の混在</li>
-                    <li><strong>6. 漢字の字体による違い</strong> - 異体字や同音異義語</li>
-                    <li><strong>7. 文体の違い</strong> - 丁寧語・常体・口語の混在</li>
-                    <li><strong>8. 固有名詞・商標</strong> - 企業名・製品名・サービス名等</li>
-                    <li><strong>9. 専門用語・事実の正確性</strong> - 法律・医療・科学等の誤用</li>
-                    <li><strong>10. 未成年表現チェック</strong> - 未成年犯罪・未成年への性的表現</li>
-                    <li><strong>11. 話の流れの矛盾</strong> - 前後関係・時系列・状況の食い違い</li>
-                    <li><strong>12. 重言・同語反復</strong> - 意味の重複や同じ言葉の繰り返し</li>
-                    <li><strong>13. 単語途中の改行</strong> - 単語・固有名詞の途中での不自然な改行</li>
-                    <li><strong>14. 日本語としての違和感</strong> - 助詞・語順・係り受けの不自然さ</li>
-                </ul>
-            </div>
-            <div style="margin-bottom:15px;">
-                <label style="font-weight:bold; display:block; margin-bottom:8px;">セリフTXTファイル:</label>
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <button class="btn btn-orange" onclick="document.getElementById('variationCheckTxtFile').click()">
-                        ファイルを選択
-                    </button>
-                    <input type="file" id="variationCheckTxtFile" style="display:none" accept=".txt" multiple onchange="loadVariationCheckTxt(this)">
-                    <span id="variationCheckTxtStatus" style="color:var(--text-secondary);"></span>
-                </div>
-            </div>
-            <div class="txt-file-list" id="variationCheckFileList" style="max-height:150px;">
-                <p style="color:var(--text-dim); text-align:center; padding:15px;">ファイルが選択されていません</p>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-gray" onclick="closeVariationCheckModal()">キャンセル</button>
-            <button class="btn btn-blue" onclick="copyVariationCheckAndOpenGemini()" id="variationCheckSubmitBtn" disabled>
-                コピー＆Geminiで開く
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- 正誤チェックモーダル -->
-<div id="simpleCheckModal" class="modal-overlay">
-    <div class="modal-content" style="max-width:700px;">
-        <div class="modal-header" >
-            <span>正誤チェック（誤字・脱字・単位・人名ルビ・伏字・人物名）</span>
-            <span class="close-modal" onclick="closeSimpleCheckModal()">✕</span>
-        </div>
-        <div class="modal-body">
-            <p style="margin-bottom:15px; color:var(--text-secondary);">
-                正誤チェック項目を実行するプロンプトを生成します。<br>
-                校正対象のセリフテキストを読み込んでからGeminiで開いてください。
-            </p>
-            <div style="margin-bottom:15px; padding:12px; background:var(--sage-light); border-radius:8px; border-left:4px solid var(--sage);">
-                <strong>チェック対象項目:</strong>
-                <ul style="margin:8px 0 0 20px; padding:0;">
-                    <li><strong>誤字</strong> - 漢字の変換ミスやタイプミス</li>
-                    <li><strong>脱字</strong> - 必要な文字の抜け</li>
-                    <li><strong>人名のルビふり確認</strong> - 漢字人名の初出確認</li>
-                    <li><strong>単位の誤り</strong> - 文脈に合わない単位の使用</li>
-                    <li><strong>伏字チェック</strong> - NGワードが伏字化されているか確認</li>
-                    <li><strong>人物名チェック</strong> - 登録された人物名との誤記・揺れ確認</li>
-                </ul>
-            </div>
-            <div style="margin-bottom:15px;">
-                <label style="font-weight:bold; display:block; margin-bottom:8px;">セリフTXTファイル:</label>
-                <div style="display:flex; gap:10px; align-items:center;">
-                    <button class="btn btn-orange" onclick="document.getElementById('simpleCheckTxtFile').click()">
-                        ファイルを選択
-                    </button>
-                    <input type="file" id="simpleCheckTxtFile" style="display:none" accept=".txt" multiple onchange="loadSimpleCheckTxt(this)">
-                    <span id="simpleCheckTxtStatus" style="color:var(--text-secondary);"></span>
-                </div>
-            </div>
-            <div class="txt-file-list" id="simpleCheckFileList" style="max-height:150px;">
-                <p style="color:var(--text-dim); text-align:center; padding:15px;">ファイルが選択されていません</p>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button class="btn btn-gray" onclick="closeSimpleCheckModal()">キャンセル</button>
-            <button class="btn btn-green" onclick="copySimpleCheckAndOpenGemini()" id="simpleCheckSubmitBtn" disabled>
-                コピー＆Geminiで開く
-            </button>
-        </div>
-    </div>
-</div>
-
 <!-- JSONフォルダブラウザモーダル -->
 <div id="jsonFolderBrowserModal" class="modal-overlay" style="display:none;">
     <div class="modal-content json-folder-browser-modal">
@@ -1057,7 +957,6 @@
                 <button class="paste-tab active" data-type="simple" onclick="selectPasteType('simple')"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span> 正誤チェック</button>
                 <button class="paste-tab" data-type="variation" onclick="selectPasteType('variation')"><span class="svg-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></span> 提案チェック</button>
             </div>
-            <textarea id="resultPasteArea" style="display:none;"></textarea>
             <div class="result-paste-dual-grid">
                 <div class="result-paste-column result-paste-column-simple">
                     <div class="result-paste-column-title">
