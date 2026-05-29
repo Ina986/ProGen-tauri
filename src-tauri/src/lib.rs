@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use tauri::{Emitter, Manager};
@@ -75,11 +75,144 @@ struct CalibrationParams {
 // アプリ状態
 struct AppState {
     master_rule_file_map: Mutex<HashMap<String, LabelInfo>>,
+    allowed_paths: Mutex<Vec<PathBuf>>,
 }
 
 // アップデート: 保留中の更新オブジェクトを保持
 struct PendingUpdate {
     update: Mutex<Option<tauri_plugin_updater::Update>>,
+}
+
+fn app_temp_dir() -> PathBuf {
+    std::env::temp_dir().join("ProGen")
+}
+
+fn handoff_dir() -> Option<PathBuf> {
+    std::env::var("USERPROFILE").ok().map(|profile| {
+        PathBuf::from(profile)
+            .join("Desktop")
+            .join("Script_Output")
+            .join("COMIPO_text\u{62BD}\u{51FA}")
+    })
+}
+
+fn ensure_app_temp_dir() -> Result<PathBuf, String> {
+    let dir = app_temp_dir();
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn canonical_existing_path(path: &Path) -> Result<PathBuf, String> {
+    fs::canonicalize(path).map_err(|_| "forbidden path".to_string())
+}
+
+fn canonical_parent_for_write(path: &Path) -> Result<PathBuf, String> {
+    let parent = path.parent().ok_or_else(|| "forbidden path".to_string())?;
+    canonical_existing_path(parent)
+}
+
+fn is_under_path(path: &Path, root: &Path) -> bool {
+    path == root || path.starts_with(root)
+}
+
+fn static_allowed_roots() -> Vec<PathBuf> {
+    [
+        JSON_FOLDER_BASE_PATH,
+        JSON_ACCESS_LOG_BASE_PATH,
+        MASTER_JSON_BASE_PATH,
+        TXT_FOLDER_BASE_PATH,
+    ]
+    .iter()
+    .filter_map(|p| fs::canonicalize(p).ok())
+    .chain(fs::canonicalize(app_temp_dir()).ok())
+    .chain(handoff_dir().and_then(|path| fs::canonicalize(path).ok()))
+    .collect()
+}
+
+fn register_allowed_path(state: &tauri::State<'_, AppState>, path: &Path) {
+    let canonical = if path.exists() {
+        canonical_existing_path(path)
+    } else {
+        canonical_parent_for_write(path)
+    };
+    let Ok(canonical) = canonical else {
+        return;
+    };
+    let mut allowed = state.allowed_paths.lock().unwrap();
+    if !allowed.iter().any(|root| root == &canonical) {
+        allowed.push(canonical);
+    }
+}
+
+fn ensure_allowed_path(state: &tauri::State<'_, AppState>, path: &Path) -> Result<PathBuf, String> {
+    let canonical = canonical_existing_path(path)?;
+    if static_allowed_roots()
+        .iter()
+        .any(|root| is_under_path(&canonical, root))
+    {
+        return Ok(canonical);
+    }
+    let allowed = state.allowed_paths.lock().unwrap();
+    if allowed.iter().any(|root| is_under_path(&canonical, root)) {
+        return Ok(canonical);
+    }
+    Err("forbidden path".to_string())
+}
+
+fn ensure_allowed_parent(
+    state: &tauri::State<'_, AppState>,
+    path: &Path,
+) -> Result<PathBuf, String> {
+    let parent = canonical_parent_for_write(path)?;
+    if static_allowed_roots()
+        .iter()
+        .any(|root| is_under_path(&parent, root))
+    {
+        return Ok(parent);
+    }
+    let allowed = state.allowed_paths.lock().unwrap();
+    if allowed.iter().any(|root| is_under_path(&parent, root)) {
+        return Ok(parent);
+    }
+    Err("forbidden path".to_string())
+}
+
+fn validate_path_component(value: &str) -> Result<(), String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed != value {
+        return Err("invalid file name".to_string());
+    }
+    if value == "." || value == ".." || value.ends_with('.') {
+        return Err("invalid file name".to_string());
+    }
+    if value.chars().any(|c| {
+        c.is_control() || matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|')
+    }) {
+        return Err("invalid file name".to_string());
+    }
+    if Path::new(value).components().any(|component| {
+        !matches!(component, Component::Normal(_))
+    }) {
+        return Err("invalid file name".to_string());
+    }
+    let stem = value
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_uppercase();
+    if matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || stem
+            .strip_prefix("COM")
+            .and_then(|n| n.parse::<u8>().ok())
+            .is_some_and(|n| (1..=9).contains(&n))
+        || stem
+            .strip_prefix("LPT")
+            .and_then(|n| n.parse::<u8>().ok())
+            .is_some_and(|n| (1..=9).contains(&n))
+    {
+        return Err("invalid file name".to_string());
+    }
+    Ok(())
 }
 
 // ========================================
@@ -170,12 +303,8 @@ fn find_label_info<'a>(
 }
 
 fn check_and_process_handoff() -> Option<HandoffData> {
-    let desktop = std::env::var("USERPROFILE").ok()?;
-    let marker_path = PathBuf::from(&desktop)
-        .join("Desktop")
-        .join("Script_Output")
-        .join("COMIPO_text\u{62BD}\u{51FA}")
-        .join(HANDOFF_MARKER);
+    let handoff_dir = handoff_dir()?;
+    let marker_path = handoff_dir.join(HANDOFF_MARKER);
     if !marker_path.exists() {
         return None;
     }
@@ -186,14 +315,21 @@ fn check_and_process_handoff() -> Option<HandoffData> {
         eprintln!("ハンドオフ対象ファイルが見つかりません: {}", txt_file_path);
         return None;
     }
-    let content = fs::read_to_string(&txt_file_path).ok()?;
-    let file_name = Path::new(&txt_file_path)
+    let target_path = Path::new(&txt_file_path);
+    let canonical_target = canonical_existing_path(target_path).ok()?;
+    let canonical_handoff_dir = canonical_existing_path(&handoff_dir).ok()?;
+    if !is_under_path(&canonical_target, &canonical_handoff_dir) {
+        eprintln!("forbidden handoff path: {}", txt_file_path);
+        return None;
+    }
+    let content = fs::read_to_string(&canonical_target).ok()?;
+    let file_name = canonical_target
         .file_name()?
         .to_string_lossy()
         .to_string();
     println!("COMIC-POTハンドオフ検出: {}", file_name);
     Some(HandoffData {
-        file_path: txt_file_path,
+        file_path: canonical_target.to_string_lossy().to_string(),
         file_name,
         content,
     })
@@ -228,9 +364,13 @@ fn get_json_folder_path() -> String {
 }
 
 #[tauri::command]
-fn list_directory(dir_path: Option<String>) -> serde_json::Value {
+fn list_directory(dir_path: Option<String>, state: tauri::State<'_, AppState>) -> serde_json::Value {
     let target = dir_path.unwrap_or_else(|| JSON_FOLDER_BASE_PATH.to_string());
-    match fs::read_dir(&target) {
+    let target_path = Path::new(&target);
+    if let Err(e) = ensure_allowed_path(&state, target_path) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
+    match fs::read_dir(target_path) {
         Ok(entries) => {
             let mut items: Vec<DirItem> = Vec::new();
             for entry in entries {
@@ -251,8 +391,12 @@ fn list_directory(dir_path: Option<String>) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn read_json_file(file_path: String) -> serde_json::Value {
-    match fs::read_to_string(&file_path) {
+fn read_json_file(file_path: String, state: tauri::State<'_, AppState>) -> serde_json::Value {
+    let path = Path::new(&file_path);
+    if let Err(e) = ensure_allowed_path(&state, path) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
+    match fs::read_to_string(path) {
         Ok(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
             Ok(data) => {
                 write_json_access_log("read", &file_path, Some(&data));
@@ -265,9 +409,17 @@ fn read_json_file(file_path: String) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn write_json_file(file_path: String, data: serde_json::Value) -> serde_json::Value {
+fn write_json_file(
+    file_path: String,
+    data: serde_json::Value,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
+    let path = Path::new(&file_path);
+    if let Err(e) = ensure_allowed_parent(&state, path) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
     match serde_json::to_string_pretty(&data) {
-        Ok(json_str) => match fs::write(&file_path, json_str) {
+        Ok(json_str) => match fs::write(path, json_str) {
             Ok(()) => {
                 write_json_access_log("write", &file_path, Some(&data));
                 serde_json::json!({ "success": true })
@@ -284,6 +436,9 @@ fn read_master_rule(label_value: String, state: tauri::State<'_, AppState>) -> s
     match find_label_info(&map, &label_value) {
         Some(info) => {
             let full_path = PathBuf::from(MASTER_JSON_BASE_PATH).join(&info.path);
+            if let Err(e) = ensure_allowed_path(&state, &full_path) {
+                return serde_json::json!({ "success": false, "error": e });
+            }
             match fs::read_to_string(&full_path) {
                 Ok(raw) => match serde_json::from_str::<serde_json::Value>(&raw) {
                     Ok(data) => serde_json::json!({ "success": true, "data": data }),
@@ -308,6 +463,9 @@ fn write_master_rule(
     match find_label_info(&map, &label_value) {
         Some(info) => {
             let full_path = PathBuf::from(MASTER_JSON_BASE_PATH).join(&info.path);
+            if let Err(e) = ensure_allowed_parent(&state, &full_path) {
+                return serde_json::json!({ "success": false, "error": e });
+            }
             match serde_json::to_string_pretty(&data) {
                 Ok(json_str) => match fs::write(&full_path, json_str) {
                     Ok(()) => serde_json::json!({ "success": true }),
@@ -328,6 +486,12 @@ fn create_master_label(
     display_name: String,
     state: tauri::State<'_, AppState>,
 ) -> serde_json::Value {
+    if let Err(e) = validate_path_component(&display_name) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
+    if label_key.trim().is_empty() || label_key.chars().any(|c| c.is_control()) {
+        return serde_json::json!({ "success": false, "error": "invalid label key" });
+    }
     let folder_path = PathBuf::from(MASTER_JSON_BASE_PATH).join(&display_name);
     if let Err(e) = fs::create_dir_all(&folder_path) {
         return serde_json::json!({ "success": false, "error": e.to_string() });
@@ -399,6 +563,9 @@ fn get_master_label_list(state: tauri::State<'_, AppState>) -> serde_json::Value
 
 #[tauri::command]
 fn create_txt_work_folder(label: String, work: String) -> serde_json::Value {
+    if let Err(e) = validate_path_component(&label).and_then(|_| validate_path_component(&work)) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
     let work_folder = PathBuf::from(TXT_FOLDER_BASE_PATH).join(&label).join(&work);
     match fs::create_dir_all(&work_folder) {
         Ok(()) => serde_json::json!({ "success": true, "path": work_folder.to_string_lossy() }),
@@ -412,9 +579,16 @@ fn get_txt_folder_path() -> String {
 }
 
 #[tauri::command]
-fn list_txt_directory(dir_path: Option<String>) -> serde_json::Value {
+fn list_txt_directory(
+    dir_path: Option<String>,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
     let target = dir_path.unwrap_or_else(|| TXT_FOLDER_BASE_PATH.to_string());
-    match fs::read_dir(&target) {
+    let target_path = Path::new(&target);
+    if let Err(e) = ensure_allowed_path(&state, target_path) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
+    match fs::read_dir(target_path) {
         Ok(entries) => {
             let mut items: Vec<DirItem> = Vec::new();
             for entry in entries {
@@ -435,8 +609,12 @@ fn list_txt_directory(dir_path: Option<String>) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn read_txt_file(file_path: String) -> serde_json::Value {
-    match fs::read_to_string(&file_path) {
+fn read_txt_file(file_path: String, state: tauri::State<'_, AppState>) -> serde_json::Value {
+    let path = Path::new(&file_path);
+    if let Err(e) = ensure_allowed_path(&state, path) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
+    match fs::read_to_string(path) {
         Ok(data) => {
             let size = fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
             let name = Path::new(&file_path)
@@ -450,8 +628,16 @@ fn read_txt_file(file_path: String) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn write_text_file(file_path: String, content: String) -> serde_json::Value {
-    match fs::write(&file_path, &content) {
+fn write_text_file(
+    file_path: String,
+    content: String,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
+    let path = Path::new(&file_path);
+    if let Err(e) = ensure_allowed_parent(&state, path) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
+    match fs::write(path, &content) {
         Ok(()) => serde_json::json!({ "success": true, "filePath": file_path }),
         Err(e) => serde_json::json!({ "success": false, "error": e.to_string() }),
     }
@@ -478,7 +664,11 @@ async fn show_save_text_dialog(
         )
         .blocking_save_file();
     match result {
-        Some(path) => serde_json::json!({ "success": true, "filePath": path.to_string() }),
+        Some(path) => {
+            let state = app.state::<AppState>();
+            register_allowed_path(&state, Path::new(&path.to_string()));
+            serde_json::json!({ "success": true, "filePath": path.to_string() })
+        }
         None => serde_json::json!({ "success": false, "canceled": true }),
     }
 }
@@ -498,7 +688,10 @@ async fn print_to_pdf(html_content: String, app: tauri::AppHandle) -> serde_json
     };
 
     // 一時HTMLファイルに書き出し
-    let temp_dir = std::env::temp_dir();
+    let temp_dir = match ensure_app_temp_dir() {
+        Ok(dir) => dir,
+        Err(e) => return serde_json::json!({ "success": false, "error": e }),
+    };
     let temp_html = temp_dir.join("progen_spec_sheet.html");
     if let Err(e) = fs::write(&temp_html, &html_content) {
         return serde_json::json!({ "success": false, "error": format!("一時ファイル作成エラー: {}", e) });
@@ -570,6 +763,9 @@ fn find_edge_executable() -> Option<String> {
 
 #[tauri::command]
 fn save_calibration_data(params: CalibrationParams) -> serde_json::Value {
+    if let Err(e) = validate_path_component(&params.label).and_then(|_| validate_path_component(&params.work)) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
     let calibration_folder = PathBuf::from(TXT_FOLDER_BASE_PATH)
         .join(&params.label)
         .join(&params.work)
@@ -819,7 +1015,13 @@ fn write_json_access_log(action: &str, file_path: &str, data: Option<&serde_json
 }
 
 #[tauri::command]
-fn launch_comic_bridge(json_file_path: String) -> serde_json::Value {
+fn launch_comic_bridge(
+    json_file_path: String,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
+    if let Err(e) = ensure_allowed_path(&state, Path::new(&json_file_path)) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
     let local_app_data = std::env::var("LOCALAPPDATA").unwrap_or_default();
     let exe_path = PathBuf::from(&local_app_data)
         .join("Comic-Bridge")
@@ -921,7 +1123,13 @@ fn find_mojiq_path() -> Option<PathBuf> {
 }
 
 #[tauri::command]
-fn launch_mojiq_with_calibration(json_file_path: String) -> serde_json::Value {
+fn launch_mojiq_with_calibration(
+    json_file_path: String,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
+    if let Err(e) = ensure_allowed_path(&state, Path::new(&json_file_path)) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
     let exe_path = match find_mojiq_path() {
         Some(p) => p,
         None => {
@@ -1056,8 +1264,11 @@ const IMAGE_EXTENSIONS: &[&str] = &[
 ];
 
 #[tauri::command]
-fn list_image_files(dir_path: String) -> serde_json::Value {
+fn list_image_files(dir_path: String, state: tauri::State<'_, AppState>) -> serde_json::Value {
     let path = Path::new(&dir_path);
+    if let Err(e) = ensure_allowed_path(&state, path) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
     if !path.is_dir() {
         return serde_json::json!({ "success": false, "error": "ディレクトリが見つかりません" });
     }
@@ -1141,12 +1352,18 @@ fn collect_number(iter: &mut std::iter::Peekable<std::str::Chars>) -> u64 {
 }
 
 #[tauri::command]
-fn list_image_files_from_paths(paths: Vec<String>) -> serde_json::Value {
+fn list_image_files_from_paths(
+    paths: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
     let mut files: Vec<serde_json::Value> = Vec::new();
     let mut seen = std::collections::HashSet::new();
 
     for p in &paths {
         let path = Path::new(p);
+        if ensure_allowed_path(&state, path).is_err() {
+            return serde_json::json!({ "success": false, "error": "forbidden path" });
+        }
         if path.is_dir() {
             if let Ok(entries) = fs::read_dir(path) {
                 for entry in entries.flatten() {
@@ -1209,10 +1426,16 @@ fn list_image_files_from_paths(paths: Vec<String>) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn read_dropped_txt_files(paths: Vec<String>) -> serde_json::Value {
+fn read_dropped_txt_files(
+    paths: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
     let mut files: Vec<serde_json::Value> = Vec::new();
     for p in &paths {
         let path = Path::new(p);
+        if ensure_allowed_path(&state, path).is_err() {
+            return serde_json::json!({ "success": false, "error": "forbidden path" });
+        }
         if !path.is_file() {
             continue;
         }
@@ -1238,8 +1461,14 @@ fn read_dropped_txt_files(paths: Vec<String>) -> serde_json::Value {
 }
 
 #[tauri::command]
-fn read_binary_file_base64(file_path: String) -> serde_json::Value {
+fn read_binary_file_base64(
+    file_path: String,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
     let path = Path::new(&file_path);
+    if let Err(e) = ensure_allowed_path(&state, path) {
+        return serde_json::json!({ "success": false, "error": e });
+    }
     if !path.is_file() {
         return serde_json::json!({ "success": false, "error": "ファイルが見つかりません" });
     }
@@ -1257,7 +1486,17 @@ fn read_binary_file_base64(file_path: String) -> serde_json::Value {
 }
 
 #[tauri::command]
-async fn load_image_preview(file_path: String, max_size: u32) -> serde_json::Value {
+async fn load_image_preview(
+    file_path: String,
+    max_size: u32,
+    app: tauri::AppHandle,
+) -> serde_json::Value {
+    {
+        let state = app.state::<AppState>();
+        if let Err(e) = ensure_allowed_path(&state, Path::new(&file_path)) {
+            return serde_json::json!({ "success": false, "error": e });
+        }
+    }
     // 非同期でブロッキング処理を実行（UIフリーズ防止）
     match tauri::async_runtime::spawn_blocking(move || {
         load_image_preview_sync(&file_path, max_size)
@@ -1316,7 +1555,10 @@ fn load_image_preview_sync(file_path: &str, max_size: u32) -> serde_json::Value 
     }
 
     // ディスクキャッシュチェック
-    let cache_dir = std::env::temp_dir();
+    let cache_dir = match ensure_app_temp_dir() {
+        Ok(dir) => dir,
+        Err(e) => return serde_json::json!({ "success": false, "error": e }),
+    };
     let cache_path = cache_dir.join(format!("{}.jpg", cache_filename));
     if cache_path.exists() {
         let cache_path_str = cache_path.to_string_lossy().to_string();
@@ -1606,7 +1848,9 @@ fn encode_preview_to_disk(
 }
 
 #[tauri::command]
-async fn show_open_image_folder_dialog(app: tauri::AppHandle) -> serde_json::Value {
+async fn show_open_image_folder_dialog(
+    app: tauri::AppHandle,
+) -> serde_json::Value {
     use tauri_plugin_dialog::DialogExt;
     let result = app
         .dialog()
@@ -1614,7 +1858,11 @@ async fn show_open_image_folder_dialog(app: tauri::AppHandle) -> serde_json::Val
         .set_title("画像フォルダを選択")
         .blocking_pick_folder();
     match result {
-        Some(path) => serde_json::json!({ "success": true, "folderPath": path.to_string() }),
+        Some(path) => {
+            let state = app.state::<AppState>();
+            register_allowed_path(&state, Path::new(&path.to_string()));
+            serde_json::json!({ "success": true, "folderPath": path.to_string() })
+        }
         None => serde_json::json!({ "success": false, "canceled": true }),
     }
 }
@@ -1637,13 +1885,19 @@ async fn show_save_json_dialog(
         .add_filter("JSON files", &["json"])
         .blocking_save_file();
     match result {
-        Some(path) => serde_json::json!({ "success": true, "filePath": path.to_string() }),
+        Some(path) => {
+            let state = app.state::<AppState>();
+            register_allowed_path(&state, Path::new(&path.to_string()));
+            serde_json::json!({ "success": true, "filePath": path.to_string() })
+        }
         None => serde_json::json!({ "success": false, "canceled": true }),
     }
 }
 
 #[tauri::command]
-async fn open_and_read_json_dialog(app: tauri::AppHandle) -> serde_json::Value {
+async fn open_and_read_json_dialog(
+    app: tauri::AppHandle,
+) -> serde_json::Value {
     use tauri_plugin_dialog::DialogExt;
     let mut builder = app
         .dialog()
@@ -1663,6 +1917,8 @@ async fn open_and_read_json_dialog(app: tauri::AppHandle) -> serde_json::Value {
     match result {
         Some(file_path) => {
             let path_str = file_path.to_string();
+            let state = app.state::<AppState>();
+            register_allowed_path(&state, Path::new(&path_str));
             match fs::read_to_string(&path_str) {
                 Ok(content) => serde_json::json!({
                     "success": true,
@@ -1732,6 +1988,7 @@ pub fn run() {
         }))
         .manage(AppState {
             master_rule_file_map: Mutex::new(initial_map),
+            allowed_paths: Mutex::new(Vec::new()),
         })
         .manage(PendingUpdate {
             update: Mutex::new(None),
@@ -1768,6 +2025,21 @@ pub fn run() {
             show_save_json_dialog,
         ])
         .setup(|app| {
+            let _ = ensure_app_temp_dir();
+            if let Some(window) = app.get_webview_window("main") {
+                let handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop {
+                        paths, ..
+                    }) = event
+                    {
+                        let state = handle.state::<AppState>();
+                        for path in paths {
+                            register_allowed_path(&state, path);
+                        }
+                    }
+                });
+            }
             // WebView2キャッシュクリア（バージョンアップ時）
             clear_webview2_cache_on_version_change(app.handle());
 
