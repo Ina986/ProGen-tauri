@@ -351,6 +351,33 @@ function cpApplyPreloadedSerifText() {
 /**
  * COMIC-POTハンドオフ: 外部プラグインから渡されたテキストをエディタに読み込み
  */
+function cpIsProofreadingHandoff(data) {
+    const mode = String(data && data.mode ? data.mode : '').trim().toLowerCase();
+    return mode === 'proofreading' || mode === 'comicpot-proofreading';
+}
+
+function cpShowProofreadingPromptScreen() {
+    const pageIds = ['landingScreen', 'mainWrapper', 'proofreadingPage', 'comicPotEditorPage', 'resultViewerPage', 'specSheetPage'];
+    pageIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove('cp-slide-out-left', 'cp-slide-in-right', 'page-transition-out', 'page-transition');
+        el.style.display = id === 'mainWrapper' ? 'flex' : 'none';
+    });
+
+    state.currentProofreadingMode = 'simple';
+    if (typeof updatePromptGenerationButtonState === 'function') updatePromptGenerationButtonState();
+    if (typeof generateXML === 'function') generateXML();
+    if (typeof updateHeaderSaveButtons === 'function') updateHeaderSaveButtons();
+
+    requestAnimationFrame(() => {
+        const bar = document.getElementById('promptGenerationBar');
+        if (bar && typeof bar.scrollIntoView === 'function') {
+            bar.scrollIntoView({ block: 'nearest' });
+        }
+    });
+}
+
 async function cpLoadFromHandoff(data) {
     let content = data.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     if (content.charCodeAt(0) === 0xFEFF) content = content.substring(1); // BOM除去
@@ -358,12 +385,13 @@ async function cpLoadFromHandoff(data) {
     const fileInfo = {
         name: data.fileName,
         content: content,
-        size: content.length
+        size: content.length,
+        path: data.filePath || ''
     };
 
     // 両方のファイルリストに追加（セリフテキスト読み込みと同等の扱い）
-    state.manuscriptTxtFiles = state.manuscriptTxtFiles.concat([fileInfo]);
-    state.proofreadingFiles = state.proofreadingFiles.concat([fileInfo]);
+    state.manuscriptTxtFiles = cpUpsertSerifFile(state.manuscriptTxtFiles, fileInfo);
+    state.proofreadingFiles = cpUpsertSerifFile(state.proofreadingFiles, fileInfo);
 
     // 抽出プロンプト側のUI更新
     updateNonJoyoDetection();
@@ -374,6 +402,7 @@ async function cpLoadFromHandoff(data) {
     const manageBtn = document.getElementById('txtManageBtn');
     if (manageBtn) manageBtn.style.display = 'inline-block';
     if (typeof updateTxtUploadStatus === 'function') updateTxtUploadStatus();
+    if (typeof updatePromptGenerationButtonState === 'function') updatePromptGenerationButtonState();
     const geminiBtn = document.getElementById('extractionGeminiBtn');
     if (geminiBtn) geminiBtn.removeAttribute('disabled');
 
@@ -395,6 +424,14 @@ async function cpLoadFromHandoff(data) {
     }
 
     // COMIC-POTエディタに読み込み＆遷移（従来動作）
+    if (cpIsProofreadingHandoff(data)) {
+        cpShowProofreadingPromptScreen();
+        if (typeof showToast === 'function') {
+            showToast('校正プロンプトを開きました', 'success');
+        }
+        return;
+    }
+
     cpText = content;
     cpSavedText = cpText;
     cpFilePath = data.filePath;

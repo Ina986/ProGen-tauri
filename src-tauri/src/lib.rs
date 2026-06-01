@@ -25,6 +25,8 @@ const MASTER_JSON_BASE_PATH: &str = r"G:\共有ドライブ\CLLENN\編集部フ�
 const TXT_FOLDER_BASE_PATH: &str =
     r"G:\共有ドライブ\CLLENN\編集部フォルダ\編集企画部\写植・校正用テキストログ";
 const HANDOFF_MARKER: &str = ".progen_handoff.txt";
+const HANDOFF_MODE_MARKER: &str = ".progen_handoff_mode.txt";
+const HANDOFF_PAYLOAD_MARKER: &str = ".progen_handoff.json";
 
 // ========================================
 // 型定義
@@ -60,6 +62,15 @@ struct HandoffData {
     #[serde(rename = "fileName")]
     file_name: String,
     content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mode: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct HandoffPayload {
+    #[serde(rename = "textPath")]
+    text_path: Option<String>,
+    mode: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -219,6 +230,46 @@ fn validate_path_component(value: &str) -> Result<(), String> {
 // ヘルパー関数
 // ========================================
 
+fn normalize_handoff_mode(value: &str) -> Option<String> {
+    match value
+        .trim()
+        .trim_start_matches('\u{FEFF}')
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "proofreading" | "comicpot-proofreading" => Some("proofreading".to_string()),
+        _ => None,
+    }
+}
+
+fn read_handoff_mode(handoff_dir: &Path, canonical_target: &Path) -> Option<String> {
+    let mode_marker = handoff_dir.join(HANDOFF_MODE_MARKER);
+    let payload_marker = handoff_dir.join(HANDOFF_PAYLOAD_MARKER);
+    if mode_marker.exists() {
+        let raw = fs::read_to_string(&mode_marker).ok();
+        let _ = fs::remove_file(&mode_marker);
+        if let Some(mode) = raw.as_deref().and_then(normalize_handoff_mode) {
+            let _ = fs::remove_file(&payload_marker);
+            return Some(mode);
+        }
+    }
+
+    if !payload_marker.exists() {
+        return None;
+    }
+
+    let raw = fs::read_to_string(&payload_marker).ok();
+    let _ = fs::remove_file(&payload_marker);
+    let payload: HandoffPayload = serde_json::from_str(raw.as_deref()?).ok()?;
+    if let Some(text_path) = payload.text_path.as_deref() {
+        let payload_target = canonical_existing_path(Path::new(text_path)).ok()?;
+        if payload_target != canonical_target {
+            return None;
+        }
+    }
+    payload.mode.as_deref().and_then(normalize_handoff_mode)
+}
+
 fn generate_label_key(folder_name: &str) -> String {
     let known_mappings: HashMap<&str, &str> = HashMap::from([
         (
@@ -327,11 +378,13 @@ fn check_and_process_handoff() -> Option<HandoffData> {
         .file_name()?
         .to_string_lossy()
         .to_string();
+    let mode = read_handoff_mode(&handoff_dir, &canonical_target);
     println!("COMIC-POTハンドオフ検出: {}", file_name);
     Some(HandoffData {
         file_path: canonical_target.to_string_lossy().to_string(),
         file_name,
         content,
+        mode,
     })
 }
 
