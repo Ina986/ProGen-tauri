@@ -270,6 +270,64 @@ fn read_handoff_mode(handoff_dir: &Path, canonical_target: &Path) -> Option<Stri
     payload.mode.as_deref().and_then(normalize_handoff_mode)
 }
 
+fn handoff_data_from_text_path(txt_file_path: &str, mode: Option<String>) -> Option<HandoffData> {
+    let txt_file_path = txt_file_path.trim().trim_start_matches('\u{FEFF}').to_string();
+    if txt_file_path.is_empty() || !Path::new(&txt_file_path).exists() {
+        eprintln!("ハンドオフ対象ファイルが見つかりません: {}", txt_file_path);
+        return None;
+    }
+
+    let canonical_target = canonical_existing_path(Path::new(&txt_file_path)).ok()?;
+    let content = fs::read_to_string(&canonical_target).ok()?;
+    let file_name = canonical_target
+        .file_name()?
+        .to_string_lossy()
+        .to_string();
+
+    Some(HandoffData {
+        file_path: canonical_target.to_string_lossy().to_string(),
+        file_name,
+        content,
+        mode,
+    })
+}
+
+fn check_and_process_cli_handoff(args: &[String]) -> Option<HandoffData> {
+    let mut text_path: Option<String> = None;
+    let mut mode: Option<String> = None;
+    let mut iter = args.iter();
+
+    while let Some(arg) = iter.next() {
+        if let Some(value) = arg
+            .strip_prefix("--handoff-text=")
+            .or_else(|| arg.strip_prefix("--comicpot-handoff-text="))
+        {
+            text_path = Some(value.to_string());
+            continue;
+        }
+
+        if arg == "--handoff-text" || arg == "--comicpot-handoff-text" {
+            if let Some(value) = iter.next() {
+                text_path = Some(value.to_string());
+            }
+            continue;
+        }
+
+        if let Some(value) = arg.strip_prefix("--handoff-mode=") {
+            mode = normalize_handoff_mode(value);
+            continue;
+        }
+
+        if arg == "--handoff-mode" {
+            if let Some(value) = iter.next() {
+                mode = normalize_handoff_mode(value);
+            }
+        }
+    }
+
+    handoff_data_from_text_path(text_path.as_deref()?, mode)
+}
+
 fn generate_label_key(folder_name: &str) -> String {
     let known_mappings: HashMap<&str, &str> = HashMap::from([
         (
@@ -1246,7 +1304,8 @@ async fn respond_to_update(accepted: bool, app: tauri::AppHandle) {
 
 #[tauri::command]
 fn get_comicpot_handoff() -> Option<HandoffData> {
-    check_and_process_handoff()
+    let args: Vec<String> = std::env::args().collect();
+    check_and_process_cli_handoff(&args).or_else(check_and_process_handoff)
 }
 
 #[tauri::command]
@@ -2031,10 +2090,12 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_focus();
-                if let Some(data) = check_and_process_handoff() {
+                if let Some(data) =
+                    check_and_process_cli_handoff(&args).or_else(check_and_process_handoff)
+                {
                     let _ = app.emit("comicpot-handoff", &data);
                 }
             }
