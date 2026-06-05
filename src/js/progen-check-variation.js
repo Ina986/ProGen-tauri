@@ -444,10 +444,8 @@ function generateVariationCheckPromptWithText(manuscriptText) {
 
     <manuscript_data>
         <title>校正対象セリフ原稿</title>
-        <instruction>以下のテキストが校正対象の漫画セリフ原稿です。上記のルールに従ってチェックを実行してください。</instruction>
-        <raw_text><![CDATA[
-${manuscriptText}
-]]></raw_text>
+        <instruction>このプロンプトと同時に添付されたTXTファイルを、校正対象となる漫画セリフ原稿として読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。添付TXTの内容に対して、上記のルールに従ってチェックを実行してください。</instruction>
+        <attachment required="true">添付TXT本文を処理対象にする</attachment>
     </manuscript_data>
 </prompt>`;
 }

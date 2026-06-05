@@ -1149,7 +1149,43 @@ fn launch_comic_bridge(
     }
 }
 
-// MojiQ.exe を Program Files / LocalAppData / Desktop の順に探す
+#[tauri::command]
+fn open_txt_attachment_folder(
+    file_paths: Vec<String>,
+    state: tauri::State<'_, AppState>,
+) -> serde_json::Value {
+    let folder = file_paths
+        .iter()
+        .filter_map(|file_path| {
+            let trimmed = file_path.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            let path = Path::new(trimmed);
+            if ensure_allowed_path(&state, path).is_err() {
+                return None;
+            }
+            if path.is_file() {
+                path.parent().map(Path::to_path_buf)
+            } else if path.is_dir() {
+                Some(path.to_path_buf())
+            } else {
+                None
+            }
+        })
+        .next()
+        .unwrap_or_else(|| PathBuf::from(TXT_FOLDER_BASE_PATH));
+
+    if !folder.exists() {
+        return serde_json::json!({ "success": false, "error": format!("フォルダが見つかりません: {}", folder.to_string_lossy()) });
+    }
+
+    match Command::new("explorer").arg(&folder).spawn() {
+        Ok(_) => serde_json::json!({ "success": true, "path": folder.to_string_lossy() }),
+        Err(e) => serde_json::json!({ "success": false, "error": e.to_string() }),
+    }
+}
+
 fn find_mojiq_path() -> Option<PathBuf> {
     let mut candidates: Vec<PathBuf> = Vec::new();
 
@@ -1560,15 +1596,79 @@ fn read_dropped_txt_files(
             continue;
         }
         if let Ok(content) = fs::read_to_string(path) {
+            let path_str = path.to_string_lossy().to_string();
             let name = path
                 .file_name()
                 .unwrap_or_default()
                 .to_string_lossy()
                 .to_string();
             let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-            files.push(serde_json::json!({ "name": name, "content": content, "size": size }));
+            files.push(serde_json::json!({ "name": name, "path": path_str, "content": content, "size": size }));
         }
     }
+    serde_json::json!({ "success": true, "files": files })
+}
+
+#[tauri::command]
+async fn open_and_read_txt_dialog(app: tauri::AppHandle) -> serde_json::Value {
+    use tauri_plugin_dialog::DialogExt;
+    let mut builder = app
+        .dialog()
+        .file()
+        .set_title("TXTファイルを選択")
+        .add_filter("TXT files", &["txt"]);
+
+    let default_dir = Path::new(TXT_FOLDER_BASE_PATH);
+    if default_dir.is_dir() {
+        builder = builder.set_directory(default_dir);
+    }
+
+    let result = builder.blocking_pick_files();
+    let Some(file_paths) = result else {
+        return serde_json::json!({ "success": false, "canceled": true });
+    };
+
+    let state = app.state::<AppState>();
+    let mut files: Vec<serde_json::Value> = Vec::new();
+
+    for file_path in file_paths {
+        let path_str = file_path.to_string();
+        let path = Path::new(&path_str);
+        register_allowed_path(&state, path);
+
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        if ext != "txt" {
+            continue;
+        }
+
+        match fs::read_to_string(path) {
+            Ok(content) => {
+                let name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let size = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+                files.push(serde_json::json!({
+                    "name": name,
+                    "path": path_str,
+                    "content": content,
+                    "size": size
+                }));
+            }
+            Err(e) => {
+                return serde_json::json!({
+                    "success": false,
+                    "error": format!("TXT読み込みエラー: {}", e)
+                });
+            }
+        }
+    }
+
     serde_json::json!({ "success": true, "files": files })
 }
 
@@ -2125,6 +2225,7 @@ pub fn run() {
             print_to_pdf,
             save_calibration_data,
             launch_comic_bridge,
+            open_txt_attachment_folder,
             launch_mojiq_with_calibration,
             get_comicpot_handoff,
             respond_to_update,
@@ -2134,6 +2235,7 @@ pub fn run() {
             load_image_preview,
             show_open_image_folder_dialog,
             read_dropped_txt_files,
+            open_and_read_txt_dialog,
             read_binary_file_base64,
             open_and_read_json_dialog,
             show_save_json_dialog,

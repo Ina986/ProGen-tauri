@@ -209,7 +209,11 @@ function startLandingVariationCheck() {
 
     const prompt = generateVariationCheckPromptWithText(state.landingProofreadingContent);
     navigator.clipboard.writeText(prompt).then(() => {
-        window.open('https://gemini.google.com/app', '_blank');
+        if (typeof window.openGeminiChromeAndTxtFolder === 'function') {
+            window.openGeminiChromeAndTxtFolder();
+        } else {
+            window.open('https://gemini.google.com/app', '_blank');
+        }
     });
 }
 
@@ -222,7 +226,11 @@ function startLandingSimpleCheck() {
 
     const prompt = generateSimpleCheckWithRulesPromptWithText(state.landingProofreadingContent);
     navigator.clipboard.writeText(prompt).then(() => {
-        window.open('https://gemini.google.com/app', '_blank');
+        if (typeof window.openGeminiChromeAndTxtFolder === 'function') {
+            window.openGeminiChromeAndTxtFolder();
+        } else {
+            window.open('https://gemini.google.com/app', '_blank');
+        }
     });
 }
 
@@ -944,7 +952,11 @@ async function copyProofreadingPromptAndOpenGemini(type) {
         return;
     }
 
-    window.open('https://gemini.google.com/app', '_blank');
+    if (typeof window.openGeminiChromeAndTxtFolder === 'function') {
+        await window.openGeminiChromeAndTxtFolder();
+    } else {
+        window.open('https://gemini.google.com/app', '_blank');
+    }
     if (typeof window.showResultPasteFloatingTab === 'function') {
         window.showResultPasteFloatingTab(isSimple ? 'simple' : 'variation');
     }

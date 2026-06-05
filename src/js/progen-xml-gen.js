@@ -295,45 +295,37 @@ ${exampleRows}
     return xml;
 }
 
-// セリフTXTデータのXMLを生成（複数ファイル対応）
+// セリフTXTデータはプロンプト本文へ埋め込まず、添付ファイル参照としてXML化する。
 function getManuscriptTxtXml() {
     if (!state.manuscriptTxtFiles || state.manuscriptTxtFiles.length === 0) {
         return '';
     }
 
-    // 複数ファイルの場合は結合して出力
     if (state.manuscriptTxtFiles.length === 1) {
         const file = state.manuscriptTxtFiles[0];
-        const escapedText = file.content.replace(/]]>/g, ']]]]><![CDATA[>');
         return `
     <manuscript_text name="校正対象セリフデータ" source="${escapeHtml(file.name)}">
-        <instruction>以下のテキストデータは校正対象となるセリフ原稿です。上記の校正ルールを適用して修正してください。</instruction>
-        <raw_text><![CDATA[
-${escapedText}
-]]></raw_text>
+        <instruction>このプロンプトと同時に添付されたTXTファイルを、校正対象となる漫画セリフ原稿として読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。</instruction>
+        <attachment source="${escapeHtml(file.name)}" required="true">添付TXT本文を処理対象にする</attachment>
     </manuscript_text>
 `;
-    } else {
-        // 複数ファイルの場合
-        let xml = `
+    }
+
+    let xml = `
     <manuscript_texts name="校正対象セリフデータ" file_count="${state.manuscriptTxtFiles.length}">
-        <instruction>以下のテキストデータは校正対象となるセリフ原稿です。複数ファイルが含まれています。各ファイルを順番に処理し、上記の校正ルールを適用して修正してください。</instruction>`;
+        <instruction>このプロンプトと同時に添付されたTXTファイル群を、校正対象となる漫画セリフ原稿として読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。各ファイルを下記の順番で処理してください。</instruction>`;
 
-        state.manuscriptTxtFiles.forEach((file, index) => {
-            const escapedText = file.content.replace(/]]>/g, ']]]]><![CDATA[>');
-            xml += `
-        <file number="${index + 1}" source="${escapeHtml(file.name)}">
-            <raw_text><![CDATA[
-${escapedText}
-]]></raw_text>
-        </file>`;
-        });
-
+    state.manuscriptTxtFiles.forEach((file, index) => {
         xml += `
+        <file number="${index + 1}" source="${escapeHtml(file.name)}">
+            <attachment source="${escapeHtml(file.name)}" required="true">添付TXT本文を処理対象にする</attachment>
+        </file>`;
+    });
+
+    xml += `
     </manuscript_texts>
 `;
-        return xml;
-    }
+    return xml;
 }
 
 // 出力形式XMLを生成（COMIC-POT形式）
@@ -681,23 +673,77 @@ function copyFromPreview() {
 }
 
 // Geminiで開く（コピー後に新しいタブで開く）
-function copyAndOpenGemini() {
-    generateXML(); // 最新状態を生成
+function getLoadedTxtAttachmentPaths() {
+    const files = []
+        .concat(Array.isArray(state.manuscriptTxtFiles) ? state.manuscriptTxtFiles : [])
+        .concat(Array.isArray(state.proofreadingFiles) ? state.proofreadingFiles : [])
+        .concat(Array.isArray(state.landingProofreadingFiles) ? state.landingProofreadingFiles : []);
+
+    return [...new Set(files
+        .map(file => file && (file.path || file.filePath))
+          .filter(path => typeof path === 'string' && path.trim() !== ''))];
+}
+
+function showGeminiLaunchModal() {
+    const modal = document.getElementById('geminiLaunchModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function hideGeminiLaunchModal() {
+    const modal = document.getElementById('geminiLaunchModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function waitForGeminiLaunchModalPaint() {
+    return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
+
+async function openGeminiChromeAndTxtFolder(filePaths = getLoadedTxtAttachmentPaths()) {
+    const startedAt = performance.now();
+    const minVisibleMs = 450;
+
+    showGeminiLaunchModal();
+    try {
+        await waitForGeminiLaunchModalPaint();
+        window.open('https://gemini.google.com/app', '_blank');
+
+        if (window.electronAPI && typeof window.electronAPI.openTxtAttachmentFolder === 'function') {
+            try {
+                const result = await window.electronAPI.openTxtAttachmentFolder(filePaths);
+                if (!result || !result.success) {
+                    console.warn('TXT attachment folder open failed:', result && result.error);
+                }
+            } catch (error) {
+                console.warn('TXT attachment folder open failed:', error);
+            }
+        }
+    } finally {
+        const elapsedMs = performance.now() - startedAt;
+        if (elapsedMs < minVisibleMs) {
+            await new Promise(resolve => setTimeout(resolve, minVisibleMs - elapsedMs));
+        }
+        hideGeminiLaunchModal();
+    }
+}
+
+async function copyAndOpenGemini() {
+    generateXML();
     const text = document.getElementById('outputArea').value;
-    navigator.clipboard.writeText(text).then(() => {
+    try {
+        await navigator.clipboard.writeText(text);
         const msg = document.getElementById('copyMsg');
         msg.style.opacity = 1;
         setTimeout(() => { msg.style.opacity = 0; }, 2000);
-    }).catch(err => {
-        console.error('クリップボードコピー失敗:', err);
-    });
-    // Geminiを新しいタブで開く（クリップボード操作に依存しない）
-    window.open('https://gemini.google.com/app', '_blank');
+    } catch (err) {
+        console.error('clipboard copy failed:', err);
+        return;
+    }
+
+    await openGeminiChromeAndTxtFolder();
     setTimeout(() => {
         openExtractionResultPasteModal();
     }, 500);
 }
-
 function openExtractionResultPasteModal() {
     const modal = document.getElementById('extractionResultPasteModal');
     const textarea = document.getElementById('extractionResultPasteArea');
@@ -815,7 +861,7 @@ async function saveExtractionResultText() {
 }
 
 // ES Module exports
-export { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, closeExtractionResultSaveSuccessModal, saveExtractionResultText };
+export { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, getLoadedTxtAttachmentPaths, openGeminiChromeAndTxtFolder, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, closeExtractionResultSaveSuccessModal, saveExtractionResultText };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, closeExtractionResultSaveSuccessModal, saveExtractionResultText });
+Object.assign(window, { generateXML, getReviewCheckXml, getManuscriptTxtXml, getOutputFormatXml, getFinalOutputXml, generatePdfOnlyXML, generatePdfAndTxtXML, generateTxtOnlyXML, copyToClipboard, openPreviewModal, closePreviewModal, copyFromPreview, getLoadedTxtAttachmentPaths, openGeminiChromeAndTxtFolder, copyAndOpenGemini, openExtractionResultPasteModal, closeExtractionResultPasteModal, closeExtractionResultSaveSuccessModal, saveExtractionResultText });

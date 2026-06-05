@@ -68,6 +68,9 @@
         // COMIC-Bridgeを起動
         launchComicBridge: (jsonFilePath) => invoke('launch_comic_bridge', { jsonFilePath }),
 
+        // 添付するTXTの親フォルダをExplorerで開く（パスが取れない場合はTXTベースフォルダ）
+        openTxtAttachmentFolder: (filePaths) => invoke('open_txt_attachment_folder', { filePaths: filePaths || [] }),
+
         // MojiQを起動して校正データJSONを渡す
         launchMojiqWithCalibration: (jsonFilePath) => invoke('launch_mojiq_with_calibration', { jsonFilePath }),
 
@@ -91,6 +94,9 @@
 
         // D&Dで落とされたTXTファイルをパスから読み込み
         readDroppedTxtFiles: (paths) => invoke('read_dropped_txt_files', { paths }),
+
+        // TXT file picker with full paths
+        openAndReadTxtDialog: () => invoke('open_and_read_txt_dialog'),
 
         // 校正結果JSONファイルを開いて読む
         openAndReadJsonDialog: () => invoke('open_and_read_json_dialog'),
