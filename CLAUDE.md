@@ -96,6 +96,13 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 
 ## 外部連携
 
+### OPUS 連携（v2.1.22 で追加）
+OPUS 側で抽出テキストを保存して ProGen を開く導線に対応。OPUS は `Desktop\Script_Output\OPUSテキスト` に `.progen_handoff.txt` / `.progen_handoff_mode.txt` / `.progen_handoff.json` を書き、必要に応じて `--handoff-mode home --text-path <txt>` で ProGen を起動する。
+
+- Rust 側: `get_comicpot_handoff` / single-instance 受信で `--text-path` と `home` / `opus-home` / `after-genre-label-selection` モードを認識。handoff 固定ディレクトリは従来の `COMIPO_text抽出` に加えて `OPUSテキスト` も許可するが、読み込み前に `fs::canonicalize` と `is_under_path` で再検証する。
+- JS 側: `home` モードの handoff は即エディタ遷移せず `state.pendingHomeHandoff` に保持。ホーム画面でジャンル／レーベルを選択して `proceedFromLandingLabel` が完了した時点で `cpConsumeHomeHandoff()` が校正プロンプト用 TXT として読み込み、校正プロンプト画面へ遷移する。
+- 既存の `proofreading` / `comicpot-proofreading` handoff は従来通り即座に校正プロンプトを開く。通常 handoff は COMIC-POT エディタへ渡す。
+
 ### COMIC-Bridge 連携
 校正データ保存後、`launch_comic_bridge` ([src-tauri/src/lib.rs](src-tauri/src/lib.rs)) で `%LOCALAPPDATA%\Comic-Bridge\comic-bridge.exe --proofreading-json <path>` を起動。
 

@@ -60,6 +60,7 @@ export const state = {
     // ランディングページ状態
     landingProofreadingFiles: [],
     landingProofreadingContent: '',
+    pendingHomeHandoff: null,
 
     // JSONブラウザ状態
     currentLoadedJson: null,

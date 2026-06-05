@@ -100,8 +100,12 @@ async function proceedFromLandingLabel() {
     if (typeof renderTable === 'function') renderTable();
     if (typeof showEditMode === 'function') showEditMode();
     if (typeof generateXML === 'function') generateXML();
+    let consumedHomeHandoff = false;
+    if (typeof window.cpConsumeHomeHandoff === 'function') {
+        consumedHomeHandoff = await window.cpConsumeHomeHandoff();
+    }
 
-    hideLandingScreen();
+    if (!consumedHomeHandoff) hideLandingScreen();
 }
 // レーベルボタンをクリックして直接開始
 async function startWithLabelDirect(label) {

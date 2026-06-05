@@ -99,12 +99,18 @@ fn app_temp_dir() -> PathBuf {
 }
 
 fn handoff_dir() -> Option<PathBuf> {
-    std::env::var("USERPROFILE").ok().map(|profile| {
-        PathBuf::from(profile)
-            .join("Desktop")
-            .join("Script_Output")
-            .join("COMIPO_text\u{62BD}\u{51FA}")
-    })
+    handoff_dirs().into_iter().next()
+}
+
+fn handoff_dirs() -> Vec<PathBuf> {
+    let Some(profile) = std::env::var("USERPROFILE").ok() else {
+        return Vec::new();
+    };
+    let script_output = PathBuf::from(profile).join("Desktop").join("Script_Output");
+    vec![
+        script_output.join("OPUS\u{30C6}\u{30AD}\u{30B9}\u{30C8}"),
+        script_output.join("COMIPO_text\u{62BD}\u{51FA}"),
+    ]
 }
 
 fn ensure_app_temp_dir() -> Result<PathBuf, String> {
@@ -136,7 +142,7 @@ fn static_allowed_roots() -> Vec<PathBuf> {
     .iter()
     .filter_map(|p| fs::canonicalize(p).ok())
     .chain(fs::canonicalize(app_temp_dir()).ok())
-    .chain(handoff_dir().and_then(|path| fs::canonicalize(path).ok()))
+    .chain(handoff_dirs().into_iter().filter_map(|path| fs::canonicalize(path).ok()))
     .collect()
 }
 
@@ -238,6 +244,7 @@ fn normalize_handoff_mode(value: &str) -> Option<String> {
         .as_str()
     {
         "proofreading" | "comicpot-proofreading" => Some("proofreading".to_string()),
+        "home" | "opus-home" | "after-genre-label-selection" => Some("home".to_string()),
         _ => None,
     }
 }
@@ -307,6 +314,18 @@ fn check_and_process_cli_handoff(args: &[String]) -> Option<HandoffData> {
         }
 
         if arg == "--handoff-text" || arg == "--comicpot-handoff-text" {
+            if let Some(value) = iter.next() {
+                text_path = Some(value.to_string());
+            }
+            continue;
+        }
+
+        if let Some(value) = arg.strip_prefix("--text-path=") {
+            text_path = Some(value.to_string());
+            continue;
+        }
+
+        if arg == "--text-path" {
             if let Some(value) = iter.next() {
                 text_path = Some(value.to_string());
             }
@@ -412,7 +431,16 @@ fn find_label_info<'a>(
 }
 
 fn check_and_process_handoff() -> Option<HandoffData> {
-    let handoff_dir = handoff_dir()?;
+    let primary_handoff_dir = handoff_dir()?;
+    for handoff_dir in std::iter::once(primary_handoff_dir).chain(handoff_dirs().into_iter().skip(1)) {
+        if let Some(data) = check_and_process_handoff_in_dir(&handoff_dir) {
+            return Some(data);
+        }
+    }
+    None
+}
+
+fn check_and_process_handoff_in_dir(handoff_dir: &Path) -> Option<HandoffData> {
     let marker_path = handoff_dir.join(HANDOFF_MARKER);
     if !marker_path.exists() {
         return None;
@@ -426,7 +454,7 @@ fn check_and_process_handoff() -> Option<HandoffData> {
     }
     let target_path = Path::new(&txt_file_path);
     let canonical_target = canonical_existing_path(target_path).ok()?;
-    let canonical_handoff_dir = canonical_existing_path(&handoff_dir).ok()?;
+    let canonical_handoff_dir = canonical_existing_path(handoff_dir).ok()?;
     if !is_under_path(&canonical_target, &canonical_handoff_dir) {
         eprintln!("forbidden handoff path: {}", txt_file_path);
         return None;
@@ -436,8 +464,8 @@ fn check_and_process_handoff() -> Option<HandoffData> {
         .file_name()?
         .to_string_lossy()
         .to_string();
-    let mode = read_handoff_mode(&handoff_dir, &canonical_target);
-    println!("COMIC-POTハンドオフ検出: {}", file_name);
+    let mode = read_handoff_mode(handoff_dir, &canonical_target);
+    println!("外部ハンドオフ検出: {}", file_name);
     Some(HandoffData {
         file_path: canonical_target.to_string_lossy().to_string(),
         file_name,

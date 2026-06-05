@@ -356,6 +356,23 @@ function cpIsProofreadingHandoff(data) {
     return mode === 'proofreading' || mode === 'comicpot-proofreading';
 }
 
+function cpIsHomeHandoff(data) {
+    const mode = String(data && data.mode ? data.mode : '').trim().toLowerCase();
+    return mode === 'home' || mode === 'opus-home' || mode === 'after-genre-label-selection';
+}
+
+function cpNormalizeHandoffFile(data) {
+    let content = String(data && data.content ? data.content : '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    if (content.charCodeAt(0) === 0xFEFF) content = content.substring(1); // BOM除去
+
+    return {
+        name: data && data.fileName ? data.fileName : 'OPUSテキスト.txt',
+        content: content,
+        size: content.length,
+        path: data && data.filePath ? data.filePath : ''
+    };
+}
+
 function cpShowProofreadingPromptScreen() {
     const pageIds = ['landingScreen', 'mainWrapper', 'proofreadingPage', 'comicPotEditorPage', 'resultViewerPage', 'specSheetPage'];
     pageIds.forEach(id => {
@@ -378,17 +395,8 @@ function cpShowProofreadingPromptScreen() {
     });
 }
 
-async function cpLoadFromHandoff(data) {
-    let content = data.content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    if (content.charCodeAt(0) === 0xFEFF) content = content.substring(1); // BOM除去
-
-    const fileInfo = {
-        name: data.fileName,
-        content: content,
-        size: content.length,
-        path: data.filePath || ''
-    };
-
+async function cpApplyHandoffToPromptData(data) {
+    const fileInfo = cpNormalizeHandoffFile(data);
     // 両方のファイルリストに追加（セリフテキスト読み込みと同等の扱い）
     state.manuscriptTxtFiles = cpUpsertSerifFile(state.manuscriptTxtFiles, fileInfo);
     state.proofreadingFiles = cpUpsertSerifFile(state.proofreadingFiles, fileInfo);
@@ -414,14 +422,51 @@ async function cpLoadFromHandoff(data) {
     updateProofreadingPrompt();
 
     // 校正データ保存用のパス情報を抽出（ベースパス未取得なら先に取得）
-    if (data.filePath) {
+    if (fileInfo.path) {
         if (!state.txtFolderBasePath && window.electronAPI && window.electronAPI.getTxtFolderPath) {
             try { state.txtFolderBasePath = await window.electronAPI.getTxtFolderPath(); } catch (e) { /* ignore */ }
         }
         if (state.txtFolderBasePath) {
-            extractCalibrationInfoFromPath(data.filePath, [fileInfo]);
+            extractCalibrationInfoFromPath(fileInfo.path, [fileInfo]);
         }
     }
+
+    return fileInfo;
+}
+
+function cpStoreHomeHandoff(data) {
+    state.pendingHomeHandoff = data;
+    const statusEl = document.getElementById('txtUploadStatus');
+    if (statusEl) {
+        statusEl.textContent = 'OPUSのテキストを受信済み';
+        statusEl.style.color = '#27ae60';
+    }
+    if (typeof showToast === 'function') {
+        showToast('OPUSのテキストを受け取りました。レーベル選択後に読み込みます。', 'success');
+    }
+}
+
+async function cpConsumeHomeHandoff() {
+    const data = state.pendingHomeHandoff;
+    if (!data || !data.content) return false;
+    state.pendingHomeHandoff = null;
+    await cpApplyHandoffToPromptData(data);
+    cpShowProofreadingPromptScreen();
+    if (typeof showToast === 'function') {
+        showToast('OPUSのテキストを校正プロンプトに読み込みました', 'success');
+    }
+    return true;
+}
+
+async function cpLoadFromHandoff(data) {
+    if (!data || !data.content) return;
+
+    if (cpIsHomeHandoff(data)) {
+        cpStoreHomeHandoff(data);
+        return;
+    }
+
+    const fileInfo = await cpApplyHandoffToPromptData(data);
 
     // COMIC-POTエディタに読み込み＆遷移（従来動作）
     if (cpIsProofreadingHandoff(data)) {
@@ -432,16 +477,16 @@ async function cpLoadFromHandoff(data) {
         return;
     }
 
-    cpText = content;
+    cpText = fileInfo.content;
     cpSavedText = cpText;
-    cpFilePath = data.filePath;
-    cpFileName = data.fileName;
+    cpFilePath = fileInfo.path;
+    cpFileName = fileInfo.name;
     cpComicPotHeader = cpExtractComicPotHeader(cpText);
     cpChunks = cpParseTextToChunks(cpText);
     cpSelectedChunkIndex = null;
     cpIsEditing = true;
     goToComicPotEditor('extraction');
-    cpShowNotification('COMIC-POTから「' + data.fileName + '」を受け取りました。', 'success');
+    cpShowNotification('COMIC-POTから「' + fileInfo.name + '」を受け取りました。', 'success');
 }
 
 // エディタ状態をリセット（テキスト・ファイル名・チャンク・画像ビューア）
@@ -3466,7 +3511,7 @@ function cpSchedulePageTextPanelRender() {
 }
 
 // ES Module exports
-export { cpInitDomRefs, goToComicPotEditor, cpGoHomeFromEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpScanPageRegions, cpPageForOffset, cpUpdateCurrentPageBadge, cpHandleCursorPageChange, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleTextFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder, cpSplitBlocksRaw, cpBuildPageBlocks, cpRenderPageTextPanel, cpCommitPageTextBlock, cpPageTextPanelToggle, cpInitPageTextPanel, cpToggleShowAllPages, cpSetPageMode };
+export { cpInitDomRefs, goToComicPotEditor, cpGoHomeFromEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, cpConsumeHomeHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpScanPageRegions, cpPageForOffset, cpUpdateCurrentPageBadge, cpHandleCursorPageChange, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleTextFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder, cpSplitBlocksRaw, cpBuildPageBlocks, cpRenderPageTextPanel, cpCommitPageTextBlock, cpPageTextPanelToggle, cpInitPageTextPanel, cpToggleShowAllPages, cpSetPageMode };
 
 // Expose to window for inline HTML handlers
-Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpGoHomeFromEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpScanPageRegions, cpPageForOffset, cpUpdateCurrentPageBadge, cpHandleCursorPageChange, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleTextFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder, cpSplitBlocksRaw, cpBuildPageBlocks, cpRenderPageTextPanel, cpCommitPageTextBlock, cpPageTextPanelToggle, cpInitPageTextPanel, cpToggleShowAllPages, cpSetPageMode });
+Object.assign(window, { cpInitDomRefs, goToComicPotEditor, cpGoHomeFromEditor, cpLoadSerifText, cpApplySerifFile, cpLoadAllSerifText, cpOpenSerifSelectModal, cpCloseSerifSelectModal, cpLoadFromHandoff, cpConsumeHomeHandoff, goBackFromComicPotEditor, cpGoToProofreading, cpShowSaveConfirm, cpCloseSaveConfirm, cpSaveConfirmAction, cpToggleResultPanel, cpShowResultPanel, cpHideResultPanel, cpSwitchPanelTab, goToResultViewerPageFromEditor, cpRenderPanelContent, cpSetupPanelCategoryFilter, cpApplyPanelCategoryFilter, cpSetupResizeHandle, cpJumpToExcerpt, cpJumpInTextarea, cpJumpInSelectMode, cpSyncToPage, cpScanPageRegions, cpPageForOffset, cpUpdateCurrentPageBadge, cpHandleCursorPageChange, cpShowNotify, cpParseTextToChunks, cpExtractComicPotHeader, cpReconstructText, cpRender, cpUpdateToolbarState, cpRenderSelectMode, cpRenderChunkContent, cpScrollToSelected, cpUpdateStatusBar, cpHandleFileOpen, cpHandleTextFileOpen, cpHandleFileSave, cpHandleFileSaveAs, cpHandleCopy, cpFallbackCopy, cpToggleDeleteMark, cpOpenRubyModal, cpCloseRubyModal, cpApplyRuby, cpSwitchRubyMode, cpOpenConvertModal, cpCloseConvertModal, cpUpdateConvertPreview, cpApplyConvert, cpHandleChunkClick, cpMoveChunkUp, cpMoveChunkDown, cpSelectPreviousChunk, cpSelectNextChunk, cpDeleteSelectedChunk, cpHandleDragStart, cpHandleDragEnd, cpHandleDragOverChunk, cpHandleDragLeaveChunk, cpHandleDropChunk, cpToggleEditMode, cpGetChunkIndexFromCursorPosition, cpSetupEventListeners, cpLoadCalibrationData, cpLoadResultJson, cpSaveResultJson, cpOpenJsonBrowser, cpCloseJsonBrowser, cpJsonBrowserNavigate, cpJsonBrowserSelect, cpJsonBrowserOpen, cpJsonBrowserFilter, cpJsonBrowserClearSearch, cpJsonBrowserGoUp, cpJsonBrowserRefresh, cpJsonBrowserOpenFolder, cpJsonBrowserOpenFile, cpJsonBrowserLoadFolder, cpSplitBlocksRaw, cpBuildPageBlocks, cpRenderPageTextPanel, cpCommitPageTextBlock, cpPageTextPanelToggle, cpInitPageTextPanel, cpToggleShowAllPages, cpSetPageMode });
