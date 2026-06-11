@@ -22,7 +22,7 @@ function getXmlHeader(dataType) {
     </objective>
 
     <system_instructions>
-        <instruction>あなたはプロの漫画編集者です。文脈を理解し、誤字脱字だけでなく、キャラクターの話し方の統一も行います。</instruction>
+        <instruction>あなたはプロの校正者です。文脈を理解し、誤字脱字だけでなく、話し方や文体の統一も行います。</instruction>
         <instruction>出力は指定されたフォーマットのみ行い、挨拶や解説は不要です。</instruction>
         <hallucination_prevention>
             <rule>提供された画像・テキスト情報のみを使用し、推測や補完は行わない</rule>
@@ -48,13 +48,13 @@ function getAttachmentType(dataType) {
 function getObjective(dataType) {
     switch(dataType) {
         case 'pdf_only':
-            return '漫画原稿のPDFからテキストを抽出し、指定された「校正ルール」に基づいて厳密にテキストを修正し、写植用データを出力する。';
+            return '原稿PDFからテキストを抽出し、指定された「校正ルール」に基づいて厳密にテキストを修正し、写植用データを出力する。';
         case 'pdf_and_txt':
             return 'PDFを「正解（読み順・行数）」、テキストファイルを「素材（文字情報）」として扱い、照合・修正後、校正ルールを適用して写植用データを出力する。';
         case 'txt_only':
             return '添付テキストに対し、「校正ルール」および「フォーマットルール」を適用して全面的に書き換え、写植用データを出力する。';
         default:
-            return '漫画原稿からテキストを抽出し、校正ルールを適用して写植用データを出力する。';
+            return '原稿からテキストを抽出し、校正ルールを適用して写植用データを出力する。';
     }
 }
 
@@ -163,7 +163,7 @@ function getProcessingSteps(dataType) {
     if (dataType === 'pdf_only') {
         return `    <step number="1" name="Text Extraction">
         <task>
-            漫画原稿の画像データからテキスト（吹き出し、モノローグ、ナレーション）を抽出する。
+            原稿の画像データからテキスト（吹き出し、モノローグ、ナレーション）を抽出する。
         </task>
         <extraction_rules>
             <rule>手書きのセリフも可能な限り抽出するが、背景の看板などは除外する。</rule>
@@ -186,7 +186,7 @@ function getProcessingSteps(dataType) {
             </examples>
         </extraction_completeness>
         <reading_order critical="true">
-            <format>右とじ（日本の漫画標準形式）</format>
+            <format>右とじ形式</format>
             <principle>右から左、上から下の順序で読む</principle>
             <panel_order>
                 <rule>ページ内のコマは「右上 → 左上 → 右下 → 左下」の順に処理する</rule>
@@ -258,7 +258,7 @@ function getProcessingSteps(dataType) {
             <important>文字数が少ない・記号だけのセリフでも、それは重要な台詞である。</important>
         </extraction_completeness>
         <reading_order critical="true">
-            <format>右とじ（日本の漫画標準形式）</format>
+            <format>右とじ形式</format>
             <principle>右から左、上から下の順序で読む</principle>
             <panel_order>
                 <rule>ページ内のコマは「右上 → 左上 → 右下 → 左下」の順に処理する</rule>

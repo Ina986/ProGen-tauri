@@ -53,8 +53,8 @@ function generateSimpleCheckWithRulesPromptWithText(manuscriptText) {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <prompt>
     <system_role>
-        あなたはプロの漫画編集者、および校閲担当AIです。
-        ユーザーがチャット欄に入力（または貼り付け）したテキストを「漫画のセリフ原稿」として扱い、以下の定義されたルールに従って校正・推敲を行ってください。
+        あなたはプロの校正者、および校閲担当AIです。
+        ユーザーがチャット欄に入力（または貼り付け）したテキストを「校正対象テキスト」として扱い、以下の定義されたルールに従って校正・推敲を行ってください。
     </system_role>
 
     <behavior_trigger>
@@ -62,7 +62,7 @@ function generateSimpleCheckWithRulesPromptWithText(manuscriptText) {
     </behavior_trigger>
 
     <process_instruction>
-        <task>入力された漫画のセリフ原稿について、誤字・脱字・人名ルビのチェック、および統一表記ルールの反映確認を5回実行してください。</task>
+        <task>入力された校正対象テキストについて、誤字・脱字・人名ルビのチェック、および統一表記ルールの反映確認を5回実行してください。</task>
 
         <execution_details>
             <iterations>5</iterations>
@@ -247,7 +247,7 @@ ${getCharacterListXmlForCheck()}
                         <case>「今日」「明日」「昨日」「大人」「下手」「上手」など日常的に使用され誰でも読める語</case>
                         <case>既にルビが振られている語</case>
                     </exclusion>
-                    <note>常用外漢字の有無だけで判断しないでください。熟字訓は語単位で確認し、「流石」のような頻出語も初出時はルビ要否の確認対象にしてください。読者層（対象年齢）を考慮し、ルビを振るべきかどうかを判断してください。漫画の読者が小中学生の場合は基準を厳しく、成人向けの場合は緩めに判断してください。</note>
+                    <note>常用外漢字の有無だけで判断しないでください。熟字訓は語単位で確認し、「流石」のような頻出語も初出時はルビ要否の確認対象にしてください。読者層（対象年齢）を考慮し、ルビを振るべきかどうかを判断してください。読者が小中学生の場合は基準を厳しく、成人向けの場合は緩めに判断してください。</note>
                 </item>${nonJoyoCheckXml}
             </section>
 
@@ -273,6 +273,8 @@ ${rulesXml}
             <format_constraint type="critical">
                 <rule>このプロンプトはXML形式で記述されていますが、あなたの出力にXMLタグを使用しないでください。</rule>
                 <rule>必ずMarkdownテーブル形式で出力してください。</rule>
+                <rule>Markdownテーブルをコードブロック（三連バッククォート）で囲まないでください。通常のMarkdown表としてレンダリングされる形で出力してください。</rule>
+                <rule>1回目〜5回目の各チェック結果と最終統合リストは、それぞれ独立した見出しと独立したMarkdownテーブルとして出力してください。複数の表を1つのコードブロックや1つのプレーンテキスト塊にまとめないでください。</rule>
             </format_constraint>
         </report_format>
 
@@ -321,8 +323,8 @@ ${rulesXml}
     </process_instruction>
 
     <manuscript_data>
-        <title>校正対象セリフ原稿</title>
-        <instruction>このプロンプトと同時に添付されたTXTファイルを、校正対象となる漫画セリフ原稿として読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。添付TXTの内容に対して、上記のルールに従ってチェックを実行してください。</instruction>
+        <title>校正対象テキスト</title>
+        <instruction>このプロンプトと同時に添付されたTXTファイルを、校正対象テキストとして読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。添付TXTの内容に対して、上記のルールに従ってチェックを実行してください。</instruction>
         <attachment required="true">添付TXT本文を処理対象にする</attachment>
     </manuscript_data>
 </prompt>`;

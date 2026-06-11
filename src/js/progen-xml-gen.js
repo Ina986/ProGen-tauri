@@ -276,6 +276,8 @@ function getReviewCheckXml() {
         xml += `
             <report_format name="報告フォーマット">
                 <instruction>見直しチェックの結果は、以下のMarkdownテーブル形式で報告してください。</instruction>
+                <instruction>Markdownテーブルをコードブロック（三連バッククォート）で囲まず、通常のMarkdown表としてレンダリングされる形で出力してください。</instruction>
+                <instruction>複数の表を出す場合は、それぞれ独立した見出しと独立したMarkdownテーブルとして出力し、1つのコードブロックや1つのプレーンテキスト塊にまとめないでください。</instruction>
                 <columns>
                     <column name="チェック項目">${checkTypes.join('/')} のいずれか</column>
                     <column name="該当箇所">ページ番号（例：3ページ目、または 8巻 5ページ）</column>
@@ -305,7 +307,7 @@ function getManuscriptTxtXml() {
         const file = state.manuscriptTxtFiles[0];
         return `
     <manuscript_text name="校正対象セリフデータ" source="${escapeHtml(file.name)}">
-        <instruction>このプロンプトと同時に添付されたTXTファイルを、校正対象となる漫画セリフ原稿として読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。</instruction>
+        <instruction>このプロンプトと同時に添付されたTXTファイルを、校正対象テキストとして読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。</instruction>
         <attachment source="${escapeHtml(file.name)}" required="true">添付TXT本文を処理対象にする</attachment>
     </manuscript_text>
 `;
@@ -313,7 +315,7 @@ function getManuscriptTxtXml() {
 
     let xml = `
     <manuscript_texts name="校正対象セリフデータ" file_count="${state.manuscriptTxtFiles.length}">
-        <instruction>このプロンプトと同時に添付されたTXTファイル群を、校正対象となる漫画セリフ原稿として読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。各ファイルを下記の順番で処理してください。</instruction>`;
+        <instruction>このプロンプトと同時に添付されたTXTファイル群を、校正対象テキストとして読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。各ファイルを下記の順番で処理してください。</instruction>`;
 
     state.manuscriptTxtFiles.forEach((file, index) => {
         xml += `
@@ -440,13 +442,13 @@ function generatePdfOnlyXML(rulesXML) {
     </trigger>
 
     <objective>
-        漫画原稿のPDFからテキストを抽出し、指定された校正ルールに基づいて内容を書き換えた後、最終的な写植用テキストデータを出力する。
+        原稿PDFからテキストを抽出し、指定された校正ルールに基づいて内容を書き換えた後、最終的な写植用テキストデータを出力する。
     </objective>
 
     <step number="1" name="Text Extraction">
-        <role>あなたはエロ漫画の編集者です。</role>
+        <role>あなたはプロの校正者です。</role>
         <task>
-            漫画原稿の画像データから吹き出し内のセリフ、モノローグ、ナレーションを抽出し、一時的なテキストデータを生成します。
+            原稿の画像データから吹き出し内のセリフ、モノローグ、ナレーションを抽出し、一時的なテキストデータを生成します。
         </task>
         <extraction_rules>
             <basic_rules>
@@ -472,7 +474,7 @@ function generatePdfOnlyXML(rulesXML) {
                 </examples>
             </extraction_completeness>
             <reading_order critical="true">
-                <format>右とじ（日本の漫画標準形式）</format>
+                <format>右とじ形式</format>
                 <principle>右から左、上から下の順序で読む</principle>
                 <panel_order>
                     <rule>ページ内のコマは「右上 → 左上 → 右下 → 左下」の順に処理する</rule>
@@ -531,7 +533,7 @@ function generatePdfAndTxtXML(rulesXML) {
     </objective>
 
     <step number="1" name="Cross-Reference and Correction">
-        <role>あなたはエロ漫画の編集者です。</role>
+        <role>あなたはプロの校正者です。</role>
         <task>
             PDFを「正解（読み順・行数）」、テキストファイルを「素材（文字情報）」として照合・修正し、一時的なテキストデータを生成します。
         </task>
@@ -553,7 +555,7 @@ function generatePdfAndTxtXML(rulesXML) {
                 <important>文字数が少ない・記号だけのセリフでも、それは重要な台詞である。</important>
             </extraction_completeness>
             <reading_order critical="true">
-                <format>右とじ（日本の漫画標準形式）</format>
+                <format>右とじ形式</format>
                 <principle>右から左、上から下の順序で読む</principle>
                 <panel_order>
                     <rule>ページ内のコマは「右上 → 左上 → 右下 → 左下」の順に処理する</rule>
@@ -612,7 +614,7 @@ function generateTxtOnlyXML(rulesXML) {
     </objective>
 
     <step number="1" name="Text Formatting">
-        <role>あなたはエロ漫画の編集者です。</role>
+        <role>あなたはプロの校正者です。</role>
         <task>
             添付テキストの内容を読み込み、フォーマットを整えます。
         </task>

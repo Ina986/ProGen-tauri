@@ -8,8 +8,8 @@ function generateVariationCheckPromptWithText(manuscriptText) {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <prompt>
     <system_role>
-        あなたはプロの漫画編集者、および校閲担当AIです。
-        ユーザーがチャット欄に入力（または貼り付け）したテキストを「漫画のセリフ原稿」として扱い、以下の定義されたルールに従って校正・推敲を行ってください。
+        あなたはプロの校正者、および校閲担当AIです。
+        ユーザーがチャット欄に入力（または貼り付け）したテキストを「校正対象テキスト」として扱い、以下の定義されたルールに従って校正・推敲を行ってください。
     </system_role>
 
     <behavior_trigger>
@@ -17,7 +17,7 @@ function generateVariationCheckPromptWithText(manuscriptText) {
     </behavior_trigger>
 
     <process_instruction>
-        <task>入力された漫画のセリフ原稿について、表記・固有名詞・文章品質のチェックを5回実行してください。</task>
+        <task>入力された校正対象テキストについて、表記・固有名詞・文章品質のチェックを5回実行してください。</task>
 
         <execution_details>
             <iterations>5</iterations>
@@ -233,7 +233,7 @@ function generateVariationCheckPromptWithText(manuscriptText) {
                     <item>犯罪行為が作中で否定的に描かれ、教訓として機能している場合</item>
                     <item>過去の回想として言及されるだけで、直接的な描写がない場合</item>
                 </exclusion>
-                <note>少しでも問題となりうる可能性がある表現は、安全のため検出対象に含めてください。編集者による最終判断が必要な箇所として報告してください。</note>
+                <note>少しでも問題となりうる可能性がある表現は、安全のため検出対象に含めてください。校正者による最終判断が必要な箇所として報告してください。</note>
             </item>
             <item id="11">
                 <name>話の流れによる前後の矛盾</name>
@@ -394,6 +394,8 @@ function generateVariationCheckPromptWithText(manuscriptText) {
             <format_constraint type="critical">
                 <rule>このプロンプトはXML形式で記述されていますが、あなたの出力にXMLタグを使用しないでください。</rule>
                 <rule>必ずMarkdownテーブル形式で出力してください。</rule>
+                <rule>Markdownテーブルをコードブロック（三連バッククォート）で囲まないでください。通常のMarkdown表としてレンダリングされる形で出力してください。</rule>
+                <rule>1回目〜5回目の各チェック結果と最終統合リストは、それぞれ独立した見出しと独立したMarkdownテーブルとして出力してください。複数の表を1つのコードブロックや1つのプレーンテキスト塊にまとめないでください。</rule>
                 <rule><b>【重要】最終統合リストを含むすべての報告において、検出された表記ゆれ・指摘事項のすべての出現箇所を省略せずに記載してください。</b>「〜など」「他多数」といった省略表現は使用せず、該当するすべてのページとセリフを1行ずつ漏れなくテーブルに記載してください。</rule>
             </format_constraint>
         </report_format>
@@ -443,8 +445,8 @@ function generateVariationCheckPromptWithText(manuscriptText) {
     </process_instruction>
 
     <manuscript_data>
-        <title>校正対象セリフ原稿</title>
-        <instruction>このプロンプトと同時に添付されたTXTファイルを、校正対象となる漫画セリフ原稿として読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。添付TXTの内容に対して、上記のルールに従ってチェックを実行してください。</instruction>
+        <title>校正対象テキスト</title>
+        <instruction>このプロンプトと同時に添付されたTXTファイルを、校正対象テキストとして読み込んでください。プロンプト本文内には原稿テキストを埋め込んでいません。添付TXTの内容に対して、上記のルールに従ってチェックを実行してください。</instruction>
         <attachment required="true">添付TXT本文を処理対象にする</attachment>
     </manuscript_data>
 </prompt>`;
